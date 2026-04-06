@@ -52,28 +52,28 @@ struct Config {
         do {
             let table = try TOMLTable(string: content)
 
-            if let hotkey = table["hotkey"] as? TOMLTable {
-                if let v = hotkey["trigger_auto_enter"] as? String { config.hotkey.triggerAutoEnter = v }
-                if let v = hotkey["trigger_no_enter"] as? String { config.hotkey.triggerNoEnter = v }
-                if let v = hotkey["cancel_delay"] as? Double { config.hotkey.cancelDelay = v }
+            if let hotkey = table["hotkey"]?.table {
+                if let v = hotkey["trigger_auto_enter"]?.string { config.hotkey.triggerAutoEnter = v }
+                if let v = hotkey["trigger_no_enter"]?.string { config.hotkey.triggerNoEnter = v }
+                if let v = hotkey["cancel_delay"]?.double { config.hotkey.cancelDelay = v }
             }
 
-            if let audio = table["audio"] as? TOMLTable {
-                if let v = audio["device"] as? String { config.audio.device = v }
-                if let v = audio["sample_rate"] as? Int { config.audio.sampleRate = v }
+            if let audio = table["audio"]?.table {
+                if let v = audio["device"]?.string { config.audio.device = v }
+                if let v = audio["sample_rate"]?.int { config.audio.sampleRate = v }
             }
 
-            if let transcription = table["transcription"] as? TOMLTable {
-                if let v = transcription["model"] as? String { config.transcription.model = v }
-                if let v = transcription["language"] as? String { config.transcription.language = v }
+            if let transcription = table["transcription"]?.table {
+                if let v = transcription["model"]?.string { config.transcription.model = v }
+                if let v = transcription["language"]?.string { config.transcription.language = v }
             }
 
-            if let output = table["output"] as? TOMLTable {
-                if let v = output["auto_paste"] as? Bool { config.output.autoPaste = v }
+            if let output = table["output"]?.table {
+                if let v = output["auto_paste"]?.bool { config.output.autoPaste = v }
             }
 
-            if let overlay = table["overlay"] as? TOMLTable {
-                if let v = overlay["enabled"] as? Bool { config.overlay.enabled = v }
+            if let overlay = table["overlay"]?.table {
+                if let v = overlay["enabled"]?.bool { config.overlay.enabled = v }
             }
         } catch {
             print("Warning: failed to parse config: \(error)")

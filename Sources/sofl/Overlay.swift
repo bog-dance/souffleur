@@ -36,13 +36,15 @@ class OverlayController {
             defer: false
         )
         win.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.floatingWindow)) + 1)
-        win.backgroundColor = NSColor.black.withAlphaComponent(0.85)
+        win.backgroundColor = .clear
         win.isOpaque = false
         win.hasShadow = true
         win.ignoresMouseEvents = true
         win.collectionBehavior = [.canJoinAllSpaces, .stationary]
         win.contentView?.wantsLayer = true
-        win.contentView?.layer?.cornerRadius = 14
+        win.contentView?.layer?.cornerRadius = 10
+        win.contentView?.layer?.masksToBounds = true
+        win.contentView?.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.85).cgColor
 
         let textField = NSTextField(frame: NSRect(x: 0, y: 4, width: width, height: height - 8))
         textField.isEditable = false
