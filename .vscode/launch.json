@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:souffleur}",
+            "name": "Debug sofl",
+            "target": "sofl",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug sofl"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:souffleur}",
+            "name": "Release sofl",
+            "target": "sofl",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release sofl"
+        }
+    ]
+}
