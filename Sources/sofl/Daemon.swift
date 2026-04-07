@@ -4,18 +4,27 @@ import Foundation
 class Daemon: @unchecked Sendable {
     let config: Config
     let stateManager: AppStateManager
-    let transcriber: Transcriber
+    let parakeetTranscriber: TranscriberBackend
+    let whisperTranscriber: TranscriberBackend?
     let debug: Bool
     var recorder: AudioRecorder?
     var hotkeyListener: HotkeyListener?
     var menuBar: MenuBarController?
     var overlay: OverlayController?
 
-    init(config: Config, transcriber: Transcriber, debug: Bool = false) {
+    init(config: Config, parakeet: TranscriberBackend, whisper: TranscriberBackend? = nil, debug: Bool = false) {
         self.config = config
         self.stateManager = AppStateManager()
-        self.transcriber = transcriber
+        self.parakeetTranscriber = parakeet
+        self.whisperTranscriber = whisper
         self.debug = debug
+    }
+
+    private func transcriber(for keyName: String) -> TranscriberBackend {
+        if keyName == "whisper", let w = whisperTranscriber {
+            return w
+        }
+        return parakeetTranscriber
     }
 
     private func log(_ message: String) {
@@ -84,6 +93,7 @@ class Daemon: @unchecked Sendable {
         }
 
         let autoEnter = keyName == "auto_enter"
+        let backend = transcriber(for: keyName)
 
         if config.hotkey.cancelDelay > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + config.hotkey.cancelDelay) { [self] in
@@ -93,17 +103,17 @@ class Daemon: @unchecked Sendable {
                     stateManager.transition(to: .idle)
                     return
                 }
-                transcribeAndOutput(audio: audio, sampleRate: sampleRate, autoEnter: autoEnter)
+                transcribeAndOutput(audio: audio, sampleRate: sampleRate, autoEnter: autoEnter, backend: backend)
             }
         } else {
-            transcribeAndOutput(audio: audio, sampleRate: sampleRate, autoEnter: autoEnter)
+            transcribeAndOutput(audio: audio, sampleRate: sampleRate, autoEnter: autoEnter, backend: backend)
         }
     }
 
-    private func transcribeAndOutput(audio: [Float], sampleRate: Double, autoEnter: Bool) {
+    private func transcribeAndOutput(audio: [Float], sampleRate: Double, autoEnter: Bool, backend: TranscriberBackend) {
         stateManager.transition(to: .processing)
         let audioDuration = Double(audio.count) / sampleRate
-        log("Transcribing \(String(format: "%.1f", audioDuration))s audio...")
+        log("Transcribing \(String(format: "%.1f", audioDuration))s audio via \(backend.engineName)...")
         let startTime = CFAbsoluteTimeGetCurrent()
         let cpuBefore = Self.getCPUTime()
 
@@ -115,7 +125,7 @@ class Daemon: @unchecked Sendable {
 
             Task.detached {
                 do {
-                    result = try await self.transcriber.transcribe(audio: audio, sampleRate: sampleRate)
+                    result = try await backend.transcribe(audio: audio, sampleRate: sampleRate)
                 } catch {
                     err = error
                 }
@@ -167,7 +177,8 @@ class Daemon: @unchecked Sendable {
         }
 
         let autoEnter = keyName == "auto_enter"
-        transcribeAndOutput(audio: audio, sampleRate: sampleRate, autoEnter: autoEnter)
+        let backend = transcriber(for: keyName)
+        transcribeAndOutput(audio: audio, sampleRate: sampleRate, autoEnter: autoEnter, backend: backend)
     }
 
     private func onCancel() {

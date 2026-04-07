@@ -2,8 +2,9 @@ import Foundation
 import TOMLKit
 
 struct HotkeyConfig {
-    var triggerAutoEnter: String = "f6"
-    var triggerNoEnter: String = "f7"
+    var triggerAutoEnter: String = "f3"
+    var triggerNoEnter: String = "f4"
+    var triggerWhisper: String = "f5"
     var cancelDelay: Double = 0.0
 }
 
@@ -14,6 +15,7 @@ struct AudioConfig {
 
 struct TranscriptionConfig {
     var model: String = "large-v3-turbo"
+    var whisperModel: String = "large-v3"
     var language: String = "uk"
 }
 
@@ -55,6 +57,7 @@ struct Config {
             if let hotkey = table["hotkey"]?.table {
                 if let v = hotkey["trigger_auto_enter"]?.string { config.hotkey.triggerAutoEnter = v }
                 if let v = hotkey["trigger_no_enter"]?.string { config.hotkey.triggerNoEnter = v }
+                if let v = hotkey["trigger_whisper"]?.string { config.hotkey.triggerWhisper = v }
                 if let v = hotkey["cancel_delay"]?.double { config.hotkey.cancelDelay = v }
             }
 
@@ -65,6 +68,7 @@ struct Config {
 
             if let transcription = table["transcription"]?.table {
                 if let v = transcription["model"]?.string { config.transcription.model = v }
+                if let v = transcription["whisper_model"]?.string { config.transcription.whisperModel = v }
                 if let v = transcription["language"]?.string { config.transcription.language = v }
             }
 

@@ -47,6 +47,9 @@ class HotkeyListener {
         if let code = Self.keyCodes[config.triggerNoEnter.lowercased()] {
             keys[code] = "no_enter"
         }
+        if let code = Self.keyCodes[config.triggerWhisper.lowercased()] {
+            keys[code] = "whisper"
+        }
     }
 
     func start() {
