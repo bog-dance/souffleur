@@ -1,72 +1,71 @@
 import ArgumentParser
 import Foundation
 
-struct Run: ParsableCommand {
-    static let configuration = CommandConfiguration(
-        abstract: "Run the daemon in foreground"
-    )
-
-    @Flag(name: .long, help: "Enable debug logging (unbuffered output)")
-    var debug = false
-
-    func run() throws {
-        if debug {
-            setbuf(stdout, nil)
-            setbuf(stderr, nil)
-        }
-
-        let config = Config.load()
-
-        print("Starting souffleur daemon...")
-        if debug {
-            print("Hotkey auto_enter: \(config.hotkey.triggerAutoEnter)")
-            print("Hotkey no_enter: \(config.hotkey.triggerNoEnter)")
-            print("Hotkey whisper: \(config.hotkey.triggerWhisper)")
-            print("Parakeet model: \(config.transcription.model)")
-            print("Whisper model: \(config.transcription.whisperModel)")
-        }
-
-        // Load Parakeet model (primary)
-        print("Loading Parakeet model...")
-        let parakeet = Transcriber(config: config.transcription)
-        let semaphore = DispatchSemaphore(value: 0)
-        var loadError: Error?
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            let runLoop = CFRunLoopGetCurrent()
-            Task {
-                do {
-                    try await parakeet.ensureModel()
-                } catch {
-                    loadError = error
-                }
-                CFRunLoopStop(runLoop!)
-            }
-            CFRunLoopRun()
-            semaphore.signal()
-        }
-        semaphore.wait()
-
-        if let error = loadError {
-            print("Failed to load Parakeet model: \(error)")
-            throw ExitCode.failure
-        }
-        print("Parakeet model loaded.")
-
-        // Whisper backend (eager-loaded by daemon after UI starts)
-        let whisper = WhisperKitTranscriber(config: config.transcription)
-
-        // Start daemon with both backends
-        let daemon = Daemon(config: config, parakeet: parakeet, whisper: whisper, debug: debug)
-        daemon.run()
-    }
-}
-
 struct Service: ParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Manage launchd service",
-        subcommands: [Install.self, Uninstall.self, Restart.self, Status.self]
+        abstract: "Manage souffleur daemon",
+        subcommands: [Start.self, Install.self, Uninstall.self, Restart.self, Status.self],
+        defaultSubcommand: Start.self
     )
+
+    struct Start: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Start the daemon")
+
+        @Flag(name: .long, help: "Enable debug logging (unbuffered output)")
+        var debug = false
+
+        func run() throws {
+            if debug {
+                setbuf(stdout, nil)
+                setbuf(stderr, nil)
+            }
+
+            let config = Config.load()
+
+            print("Starting souffleur daemon...")
+            if debug {
+                print("Hotkey auto_enter: \(config.hotkey.triggerAutoEnter)")
+                print("Hotkey no_enter: \(config.hotkey.triggerNoEnter)")
+                print("Hotkey whisper: \(config.hotkey.triggerWhisper)")
+                print("Parakeet model: \(config.transcription.model)")
+                print("Whisper model: \(config.transcription.whisperModel)")
+            }
+
+            // Load Parakeet model (primary)
+            print("Loading Parakeet model...")
+            let parakeet = Transcriber(config: config.transcription)
+            let semaphore = DispatchSemaphore(value: 0)
+            var loadError: Error?
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                let runLoop = CFRunLoopGetCurrent()
+                Task {
+                    do {
+                        try await parakeet.ensureModel()
+                    } catch {
+                        loadError = error
+                    }
+                    CFRunLoopStop(runLoop!)
+                }
+                CFRunLoopRun()
+                semaphore.signal()
+            }
+            semaphore.wait()
+
+            if let error = loadError {
+                print("Failed to load Parakeet model: \(error)")
+                throw ExitCode.failure
+            }
+            print("Parakeet model loaded.")
+
+            // Whisper backend (eager-loaded by daemon after UI starts)
+            let whisper = WhisperKitTranscriber(config: config.transcription)
+
+            // Start daemon with both backends
+            let daemon = Daemon(config: config, parakeet: parakeet, whisper: whisper, debug: debug)
+            daemon.run()
+        }
+    }
 
     struct Install: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Install and start service")

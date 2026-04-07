@@ -68,6 +68,7 @@ class Daemon: @unchecked Sendable {
         })
 
         stateManager.transition(to: .idle)
+        setAppIcon()
         print("Ready.")
 
         // Eager-load whisper model in background (parakeet remains usable)
@@ -234,6 +235,13 @@ class Daemon: @unchecked Sendable {
         let user = Double(info.user_time.seconds) + Double(info.user_time.microseconds) / 1_000_000
         let sys = Double(info.system_time.seconds) + Double(info.system_time.microseconds) / 1_000_000
         return user + sys
+    }
+
+    private func setAppIcon() {
+        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            NSApplication.shared.applicationIconImage = img
+        }
     }
 
     private func setupSignalHandlers() {

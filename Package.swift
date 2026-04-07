@@ -20,6 +20,7 @@ let package = Package(
                 .product(name: "TOMLKit", package: "TOMLKit"),
             ],
             path: "Sources/sofl",
+            resources: [.copy("Resources/AppIcon.png")],
             swiftSettings: [
                 .swiftLanguageMode(.v5),
             ]

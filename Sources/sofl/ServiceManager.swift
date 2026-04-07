@@ -31,7 +31,8 @@ enum ServiceManager {
             <key>ProgramArguments</key>
             <array>
                 <string>\(binaryPath)</string>
-                <string>run</string>
+                <string>service</string>
+                <string>start</string>
             </array>
             <key>RunAtLoad</key>
             <true/>
@@ -98,7 +99,7 @@ enum ServiceManager {
     }
 
     private static func findBinary() -> String? {
-        // Check common locations
+        // Resolve symlinks to get the real path (inside .app bundle)
         let candidates: [String] = [
             "/opt/homebrew/bin/sofl",
             "/usr/local/bin/sofl",
@@ -106,7 +107,8 @@ enum ServiceManager {
         ]
         for path in candidates {
             guard !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) else { continue }
-            return path
+            let resolved = (path as NSString).resolvingSymlinksInPath
+            return resolved
         }
         return nil
     }
