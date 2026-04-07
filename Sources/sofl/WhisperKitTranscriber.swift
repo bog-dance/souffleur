@@ -3,6 +3,7 @@ import WhisperKit
 
 class WhisperKitTranscriber: @unchecked Sendable, TranscriberBackend {
     let engineName = "whisper"
+    var isReady: Bool { isLoaded }
     private let config: TranscriptionConfig
     private var whisperKit: WhisperKit?
     private var isLoaded = false
@@ -27,7 +28,6 @@ class WhisperKitTranscriber: @unchecked Sendable, TranscriberBackend {
         try await ensureModel()
         guard let pipe = whisperKit else { return "" }
 
-        // Resample to 16kHz if needed
         let samples: [Float]
         if abs(sampleRate - 16000.0) > 1.0 {
             samples = Self.resample(audio, from: sampleRate, to: 16000.0)

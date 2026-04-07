@@ -123,6 +123,11 @@ class HotkeyListener {
             return nil
         }
 
+        // Swallow key repeat events during recording (prevents beep and escape sequences)
+        if type == .keyDown && pressedKey != nil {
+            return nil
+        }
+
         if type == .keyDown && pressedKey == nil && !_isRecording {
             pressedKey = keyName
             pressTime = Date()

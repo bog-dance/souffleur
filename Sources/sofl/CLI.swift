@@ -53,9 +53,8 @@ struct Run: ParsableCommand {
         }
         print("Parakeet model loaded.")
 
-        // Load Whisper model (secondary, lazy — loads on first use)
+        // Whisper backend (eager-loaded by daemon after UI starts)
         let whisper = WhisperKitTranscriber(config: config.transcription)
-        print("Whisper backend registered (will download on first use).")
 
         // Start daemon with both backends
         let daemon = Daemon(config: config, parakeet: parakeet, whisper: whisper, debug: debug)

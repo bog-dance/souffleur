@@ -4,6 +4,7 @@ import Foundation
 
 class Transcriber: @unchecked Sendable, TranscriberBackend {
     let engineName = "parakeet"
+    var isReady: Bool { isLoaded }
     private let config: TranscriptionConfig
     private var asrManager: AsrManager?
     private var isLoaded = false

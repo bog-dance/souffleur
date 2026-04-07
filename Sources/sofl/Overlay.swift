@@ -99,7 +99,7 @@ class OverlayController {
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             let spinner = self.spinnerFrames[self.loadingFrame % self.spinnerFrames.count]
-            self.label?.stringValue = "\(spinner)  loading model  \(spinner)"
+            self.label?.stringValue = "\(spinner)  loading whisper  \(spinner)"
             self.loadingFrame += 1
         }
     }
