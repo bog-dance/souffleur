@@ -3,7 +3,7 @@ import TOMLKit
 
 struct HotkeyConfig {
     var triggerAutoEnter: String = "f3"
-    var triggerNoEnter: String = "f7"
+    var triggerNoEnter: String = "f4"
     var triggerWhisper: String = "f8"
     var cancelDelay: Double = 0.0
 }
