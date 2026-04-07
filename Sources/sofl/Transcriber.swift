@@ -2,7 +2,8 @@ import AVFoundation
 import FluidAudio
 import Foundation
 
-class Transcriber: @unchecked Sendable {
+class Transcriber: @unchecked Sendable, TranscriberBackend {
+    let engineName = "parakeet"
     private let config: TranscriptionConfig
     private var asrManager: AsrManager?
     private var isLoaded = false

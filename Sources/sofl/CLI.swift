@@ -21,12 +21,14 @@ struct Run: ParsableCommand {
         if debug {
             print("Hotkey auto_enter: \(config.hotkey.triggerAutoEnter)")
             print("Hotkey no_enter: \(config.hotkey.triggerNoEnter)")
-            print("Model: \(config.transcription.model)")
+            print("Hotkey whisper: \(config.hotkey.triggerWhisper)")
+            print("Parakeet model: \(config.transcription.model)")
+            print("Whisper model: \(config.transcription.whisperModel)")
         }
-        print("Loading model...")
 
-        // Load model synchronously - bridge async via dedicated pthread + CFRunLoop
-        let transcriber = Transcriber(config: config.transcription)
+        // Load Parakeet model (primary)
+        print("Loading Parakeet model...")
+        let parakeet = Transcriber(config: config.transcription)
         let semaphore = DispatchSemaphore(value: 0)
         var loadError: Error?
 
@@ -34,7 +36,7 @@ struct Run: ParsableCommand {
             let runLoop = CFRunLoopGetCurrent()
             Task {
                 do {
-                    try await transcriber.ensureModel()
+                    try await parakeet.ensureModel()
                 } catch {
                     loadError = error
                 }
@@ -46,14 +48,17 @@ struct Run: ParsableCommand {
         semaphore.wait()
 
         if let error = loadError {
-            print("Failed to load model: \(error)")
+            print("Failed to load Parakeet model: \(error)")
             throw ExitCode.failure
         }
-        print("Model loaded.")
+        print("Parakeet model loaded.")
 
-        // Now we're on the main thread (ParsableCommand.run() runs synchronously)
-        // Start daemon - NSApp.run() will take over
-        let daemon = Daemon(config: config, transcriber: transcriber, debug: debug)
+        // Load Whisper model (secondary, lazy — loads on first use)
+        let whisper = WhisperKitTranscriber(config: config.transcription)
+        print("Whisper backend registered (will download on first use).")
+
+        // Start daemon with both backends
+        let daemon = Daemon(config: config, parakeet: parakeet, whisper: whisper, debug: debug)
         daemon.run()
     }
 }
@@ -93,6 +98,9 @@ struct Test: ParsableCommand {
     @Option(name: .shortAndLong, help: "Recording duration in seconds")
     var duration: Double = 3.0
 
+    @Option(name: .shortAndLong, help: "Engine to test: parakeet or whisper")
+    var engine: String = "parakeet"
+
     func run() throws {
         let config = Config.load()
         print("Recording for \(duration) seconds...")
@@ -107,8 +115,15 @@ struct Test: ParsableCommand {
             return
         }
 
-        print("Transcribing...")
-        let transcriber = Transcriber(config: config.transcription)
+        let transcriber: TranscriberBackend
+        if engine == "whisper" {
+            print("Transcribing with Whisper (\(config.transcription.whisperModel))...")
+            transcriber = WhisperKitTranscriber(config: config.transcription)
+        } else {
+            print("Transcribing with Parakeet...")
+            transcriber = Transcriber(config: config.transcription)
+        }
+
         let semaphore = DispatchSemaphore(value: 0)
         var result = ""
         var err: Error?
@@ -171,6 +186,7 @@ struct ShowConfig: ParsableCommand {
         print("[hotkey]")
         print("trigger_auto_enter = \"\(config.hotkey.triggerAutoEnter)\"")
         print("trigger_no_enter = \"\(config.hotkey.triggerNoEnter)\"")
+        print("trigger_whisper = \"\(config.hotkey.triggerWhisper)\"")
         print("cancel_delay = \(config.hotkey.cancelDelay)")
         print("")
         print("[audio]")
@@ -179,6 +195,7 @@ struct ShowConfig: ParsableCommand {
         print("")
         print("[transcription]")
         print("model = \"\(config.transcription.model)\"")
+        print("whisper_model = \"\(config.transcription.whisperModel)\"")
         print("language = \"\(config.transcription.language)\"")
         print("")
         print("[output]")
