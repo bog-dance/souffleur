@@ -5,27 +5,38 @@ import Foundation
 class OverlayController {
     private var window: NSWindow?
     private var label: NSTextField?
+    private var progressLabel: NSTextField?
     private var timer: Timer?
     private var loadingFrame = 0
-    private var cancellable: AnyCancellable?
+    private var cancellables: Set<AnyCancellable> = []
+    private var currentText = ""
+    private var currentState: AppState = .idle
 
     private let bars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"]
     private let spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
     init(stateManager: AppStateManager) {
         setupWindow()
-        cancellable = stateManager.$state
+        stateManager.$state
+            .combineLatest(stateManager.$statusText)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                self?.onStateChange(state)
+            .sink { [weak self] state, text in
+                guard let self = self else { return }
+                let stateChanged = self.currentState != state
+                self.currentText = text
+                self.currentState = state
+                if stateChanged {
+                    self.onStateChange(state)
+                }
             }
+            .store(in: &cancellables)
     }
 
     private func setupWindow() {
         guard let screen = NSScreen.main else { return }
 
         let width: CGFloat = 180
-        let height: CGFloat = 36
+        let height: CGFloat = 52
         let x = (screen.frame.width - width) / 2
         let y = screen.frame.height - 100
 
@@ -46,7 +57,7 @@ class OverlayController {
         win.contentView?.layer?.masksToBounds = true
         win.contentView?.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.85).cgColor
 
-        let textField = NSTextField(frame: NSRect(x: 0, y: 4, width: width, height: height - 8))
+        let textField = NSTextField(frame: NSRect(x: 0, y: 16, width: width, height: 28))
         textField.isEditable = false
         textField.isBordered = false
         textField.backgroundColor = .clear
@@ -55,19 +66,33 @@ class OverlayController {
         textField.textColor = NSColor(red: 0.3, green: 0.85, blue: 0.4, alpha: 1.0)
         win.contentView?.addSubview(textField)
 
+        let progField = NSTextField(frame: NSRect(x: 0, y: 2, width: width, height: 14))
+        progField.isEditable = false
+        progField.isBordered = false
+        progField.backgroundColor = .clear
+        progField.alignment = .center
+        progField.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+        progField.textColor = NSColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0)
+        progField.stringValue = ""
+        win.contentView?.addSubview(progField)
+
         window = win
         label = textField
+        progressLabel = progField
     }
 
     private func onStateChange(_ state: AppState) {
         stopTimer()
+        progressLabel?.stringValue = ""
         switch state {
         case .recording:
             startWaveAnimation()
         case .loading:
-            startLoadingAnimation()
+            startSpinnerAnimation("loading")
         case .processing:
-            startProcessingAnimation()
+            startSpinnerAnimation("transcribing")
+        case .postprocessing:
+            startSpinnerAnimation("postprocess")
         case .done, .idle:
             hide()
         }
@@ -75,6 +100,7 @@ class OverlayController {
 
     private func startWaveAnimation() {
         show()
+        progressLabel?.stringValue = ""
         timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             let wave = (0..<9).map { _ in self.bars.randomElement()! }.joined(separator: " ")
@@ -82,24 +108,14 @@ class OverlayController {
         }
     }
 
-    private func startProcessingAnimation() {
+    private func startSpinnerAnimation(_ fallbackText: String) {
         show()
         loadingFrame = 0
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             let spinner = self.spinnerFrames[self.loadingFrame % self.spinnerFrames.count]
-            self.label?.stringValue = "\(spinner)  transcribing  \(spinner)"
-            self.loadingFrame += 1
-        }
-    }
-
-    private func startLoadingAnimation() {
-        show()
-        loadingFrame = 0
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            let spinner = self.spinnerFrames[self.loadingFrame % self.spinnerFrames.count]
-            self.label?.stringValue = "\(spinner)  loading whisper  \(spinner)"
+            self.label?.stringValue = "\(spinner)  \(fallbackText)  \(spinner)"
+            self.progressLabel?.stringValue = self.currentText
             self.loadingFrame += 1
         }
     }

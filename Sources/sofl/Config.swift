@@ -1,10 +1,21 @@
 import Foundation
 import TOMLKit
 
+struct ModelConfig {
+    var engine: String
+    var model: String
+}
+
+struct HotkeyEntry {
+    var key: String
+    var name: String
+    var stt: String
+    var postprocess: String = "none"
+    var autoEnter: Bool = false
+}
+
 struct HotkeyConfig {
-    var triggerAutoEnter: String = "f3"
-    var triggerNoEnter: String = "f4"
-    var triggerWhisper: String = "f5"
+    var entries: [HotkeyEntry] = []
     var cancelDelay: Double = 0.0
 }
 
@@ -14,8 +25,6 @@ struct AudioConfig {
 }
 
 struct TranscriptionConfig {
-    var model: String = "large-v3-turbo"
-    var whisperModel: String = "large-v3"
     var language: String = "uk"
 }
 
@@ -28,12 +37,21 @@ struct OverlayConfig {
     var enabled: Bool = true
 }
 
+struct PostProcessConfig {
+    var enabled: Bool = false
+    var ollamaUrl: String = "http://localhost:11434"
+    var model: String = "gemma3:4b"
+    var timeout: Double = 10.0
+}
+
 struct Config {
+    var models: [String: ModelConfig] = [:]
     var hotkey = HotkeyConfig()
     var audio = AudioConfig()
     var transcription = TranscriptionConfig()
     var output = OutputConfig()
     var overlay = OverlayConfig()
+    var postprocess = PostProcessConfig()
 
     static var configPath: String {
         let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
@@ -54,11 +72,30 @@ struct Config {
         do {
             let table = try TOMLTable(string: content)
 
+            if let models = table["models"]?.table {
+                for (alias, value) in models {
+                    guard let t = value.table,
+                          let engine = t["engine"]?.string,
+                          let model = t["model"]?.string else { continue }
+                    config.models[alias] = ModelConfig(engine: engine, model: model)
+                }
+            }
+
             if let hotkey = table["hotkey"]?.table {
-                if let v = hotkey["trigger_auto_enter"]?.string { config.hotkey.triggerAutoEnter = v }
-                if let v = hotkey["trigger_no_enter"]?.string { config.hotkey.triggerNoEnter = v }
-                if let v = hotkey["trigger_whisper"]?.string { config.hotkey.triggerWhisper = v }
                 if let v = hotkey["cancel_delay"]?.double { config.hotkey.cancelDelay = v }
+
+                if let keys = hotkey["keys"]?.array {
+                    for item in keys {
+                        guard let t = item.table,
+                              let key = t["key"]?.string,
+                              let name = t["name"]?.string,
+                              let stt = t["stt"]?.string else { continue }
+                        var entry = HotkeyEntry(key: key, name: name, stt: stt)
+                        if let v = t["postprocess"]?.string { entry.postprocess = v }
+                        if let v = t["auto_enter"]?.bool { entry.autoEnter = v }
+                        config.hotkey.entries.append(entry)
+                    }
+                }
             }
 
             if let audio = table["audio"]?.table {
@@ -67,8 +104,6 @@ struct Config {
             }
 
             if let transcription = table["transcription"]?.table {
-                if let v = transcription["model"]?.string { config.transcription.model = v }
-                if let v = transcription["whisper_model"]?.string { config.transcription.whisperModel = v }
                 if let v = transcription["language"]?.string { config.transcription.language = v }
             }
 
@@ -78,6 +113,13 @@ struct Config {
 
             if let overlay = table["overlay"]?.table {
                 if let v = overlay["enabled"]?.bool { config.overlay.enabled = v }
+            }
+
+            if let pp = table["postprocess"]?.table {
+                if let v = pp["enabled"]?.bool { config.postprocess.enabled = v }
+                if let v = pp["ollama_url"]?.string { config.postprocess.ollamaUrl = v }
+                if let v = pp["model"]?.string { config.postprocess.model = v }
+                if let v = pp["timeout"]?.double { config.postprocess.timeout = v }
             }
         } catch {
             print("Warning: failed to parse config: \(error)")

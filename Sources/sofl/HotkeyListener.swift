@@ -12,43 +12,39 @@ class HotkeyListener {
 
     private static let tapThreshold: TimeInterval = 0.3
 
-    private var keys: [Int64: String] = [:]
-    private var pressedKey: String?
+    private var keys: [Int64: HotkeyEntry] = [:]
+    private var pressedEntry: HotkeyEntry?
     private var pressTime: Date?
     private var _isCancelled = false
     private var _isRecording = false
     private var isToggleMode = false
     fileprivate var eventTap: CFMachPort?
 
-    var onPress: ((String) -> Void)?
-    var onRelease: ((String) -> Void)?
+    var onPress: ((HotkeyEntry) -> Void)?
+    var onRelease: ((HotkeyEntry) -> Void)?
     var onCancel: (() -> Void)?
-    var onToggleStart: ((String) -> Void)?
-    var onToggleStop: ((String) -> Void)?
+    var onToggleStart: ((HotkeyEntry) -> Void)?
+    var onToggleStop: ((HotkeyEntry) -> Void)?
 
     var isCancelled: Bool { _isCancelled }
     var isRecording: Bool { _isRecording }
 
     init(config: HotkeyConfig,
-         onPress: @escaping (String) -> Void,
-         onRelease: @escaping (String) -> Void,
+         onPress: @escaping (HotkeyEntry) -> Void,
+         onRelease: @escaping (HotkeyEntry) -> Void,
          onCancel: @escaping () -> Void,
-         onToggleStart: @escaping (String) -> Void,
-         onToggleStop: @escaping (String) -> Void) {
+         onToggleStart: @escaping (HotkeyEntry) -> Void,
+         onToggleStop: @escaping (HotkeyEntry) -> Void) {
         self.onPress = onPress
         self.onRelease = onRelease
         self.onCancel = onCancel
         self.onToggleStart = onToggleStart
         self.onToggleStop = onToggleStop
 
-        if let code = Self.keyCodes[config.triggerAutoEnter.lowercased()] {
-            keys[code] = "auto_enter"
-        }
-        if let code = Self.keyCodes[config.triggerNoEnter.lowercased()] {
-            keys[code] = "no_enter"
-        }
-        if let code = Self.keyCodes[config.triggerWhisper.lowercased()] {
-            keys[code] = "whisper"
+        for entry in config.entries {
+            if let code = Self.keyCodes[entry.key.lowercased()] {
+                keys[code] = entry
+            }
         }
     }
 
@@ -72,7 +68,7 @@ class HotkeyListener {
         let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
-        print("Hotkeys registered: \(keys.values.joined(separator: ", "))")
+        print("Hotkeys registered: \(keys.values.map { "\($0.name)=\($0.key)" }.joined(separator: ", "))")
     }
 
     func stop() {
@@ -110,7 +106,7 @@ class HotkeyListener {
             return Unmanaged.passRetained(event)
         }
 
-        guard let keyName = keys[keyCode] else {
+        guard let entry = keys[keyCode] else {
             return Unmanaged.passRetained(event)
         }
 
@@ -118,36 +114,34 @@ class HotkeyListener {
         if type == .keyDown && isToggleMode && _isRecording {
             isToggleMode = false
             _isRecording = false
-            pressedKey = nil
-            onToggleStop?(keyName)
+            pressedEntry = nil
+            onToggleStop?(entry)
             return nil
         }
 
-        // Swallow key repeat events during recording (prevents beep and escape sequences)
-        if type == .keyDown && pressedKey != nil {
+        // Swallow key repeat events during recording
+        if type == .keyDown && pressedEntry != nil {
             return nil
         }
 
-        if type == .keyDown && pressedKey == nil && !_isRecording {
-            pressedKey = keyName
+        if type == .keyDown && pressedEntry == nil && !_isRecording {
+            pressedEntry = entry
             pressTime = Date()
             _isRecording = true
             _isCancelled = false
-            onPress?(keyName)
+            onPress?(entry)
             return nil
-        } else if type == .keyUp && pressedKey == keyName {
+        } else if type == .keyUp && pressedEntry?.name == entry.name {
             let holdDuration = pressTime.map { Date().timeIntervalSince($0) } ?? 1.0
-            pressedKey = nil
+            pressedEntry = nil
 
             if holdDuration < Self.tapThreshold {
-                // Short tap - enter toggle mode, keep recording
                 isToggleMode = true
-                onToggleStart?(keyName)
+                onToggleStart?(entry)
             } else {
-                // Long hold - stop and transcribe (push-to-talk)
                 _isRecording = false
                 if !_isCancelled {
-                    onRelease?(keyName)
+                    onRelease?(entry)
                 }
             }
             return nil

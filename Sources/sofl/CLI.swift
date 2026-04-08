@@ -24,45 +24,72 @@ struct Service: ParsableCommand {
 
             print("Starting souffleur daemon...")
             if debug {
-                print("Hotkey auto_enter: \(config.hotkey.triggerAutoEnter)")
-                print("Hotkey no_enter: \(config.hotkey.triggerNoEnter)")
-                print("Hotkey whisper: \(config.hotkey.triggerWhisper)")
-                print("Parakeet model: \(config.transcription.model)")
-                print("Whisper model: \(config.transcription.whisperModel)")
-            }
-
-            // Load Parakeet model (primary)
-            print("Loading Parakeet model...")
-            let parakeet = Transcriber(config: config.transcription)
-            let semaphore = DispatchSemaphore(value: 0)
-            var loadError: Error?
-
-            DispatchQueue.global(qos: .userInitiated).async {
-                let runLoop = CFRunLoopGetCurrent()
-                Task {
-                    do {
-                        try await parakeet.ensureModel()
-                    } catch {
-                        loadError = error
-                    }
-                    CFRunLoopStop(runLoop!)
+                for (alias, m) in config.models {
+                    print("Model \(alias): \(m.model) (engine: \(m.engine))")
                 }
-                CFRunLoopRun()
-                semaphore.signal()
+                for entry in config.hotkey.entries {
+                    print("Hotkey \(entry.name): \(entry.key) (stt: \(entry.stt), pp: \(entry.postprocess), enter: \(entry.autoEnter))")
+                }
             }
-            semaphore.wait()
 
-            if let error = loadError {
-                print("Failed to load Parakeet model: \(error)")
+            // Build transcribers from config
+            var transcribers: [String: TranscriberBackend] = [:]
+            // Find which STT aliases are actually used by hotkeys
+            let usedAliases = Set(config.hotkey.entries.map { $0.stt })
+
+            for alias in usedAliases {
+                guard let modelConfig = config.models[alias] else {
+                    print("Warning: hotkey references stt=\(alias) but no [models.\(alias)] defined")
+                    continue
+                }
+                let backend: TranscriberBackend
+                switch modelConfig.engine {
+                case "fluidaudio":
+                    backend = Transcriber(alias: alias, modelName: modelConfig.model)
+                case "whisperkit":
+                    backend = WhisperKitTranscriber(alias: alias, modelName: modelConfig.model, language: config.transcription.language)
+                default:
+                    print("Warning: unknown engine '\(modelConfig.engine)' for model \(alias)")
+                    continue
+                }
+                transcribers[alias] = backend
+            }
+
+            guard !transcribers.isEmpty else {
+                print("Error: no transcribers configured")
                 throw ExitCode.failure
             }
-            print("Parakeet model loaded.")
 
-            // Whisper backend (eager-loaded by daemon after UI starts)
-            let whisper = WhisperKitTranscriber(config: config.transcription)
+            // Eager-load the first transcriber (blocking) so it's ready immediately
+            let firstAlias = config.hotkey.entries.first!.stt
+            if let first = transcribers[firstAlias] {
+                print("Loading \(firstAlias) model...")
+                let semaphore = DispatchSemaphore(value: 0)
+                var loadError: Error?
 
-            // Start daemon with both backends
-            let daemon = Daemon(config: config, parakeet: parakeet, whisper: whisper, debug: debug)
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let runLoop = CFRunLoopGetCurrent()
+                    Task {
+                        do {
+                            try await first.ensureModel()
+                        } catch {
+                            loadError = error
+                        }
+                        CFRunLoopStop(runLoop!)
+                    }
+                    CFRunLoopRun()
+                    semaphore.signal()
+                }
+                semaphore.wait()
+
+                if let error = loadError {
+                    print("Failed to load \(firstAlias) model: \(error)")
+                    throw ExitCode.failure
+                }
+                print("\(firstAlias) model loaded.")
+            }
+
+            let daemon = Daemon(config: config, transcribers: transcribers, debug: debug)
             daemon.run()
         }
     }
@@ -96,13 +123,19 @@ struct Test: ParsableCommand {
     @Option(name: .shortAndLong, help: "Recording duration in seconds")
     var duration: Double = 3.0
 
-    @Option(name: .shortAndLong, help: "Engine to test: parakeet or whisper")
-    var engine: String = "parakeet"
+    @Option(name: .shortAndLong, help: "STT model alias (as defined in config [models])")
+    var engine: String?
 
     func run() throws {
         let config = Config.load()
-        print("Recording for \(duration) seconds...")
+        let alias = engine ?? config.hotkey.entries.first?.stt ?? "parakeet"
 
+        guard let modelConfig = config.models[alias] else {
+            print("Error: no model '\(alias)' in config. Available: \(config.models.keys.joined(separator: ", "))")
+            throw ExitCode.failure
+        }
+
+        print("Recording for \(duration) seconds...")
         let recorder = AudioRecorder(config: config.audio)
         recorder.start()
         Thread.sleep(forTimeInterval: duration)
@@ -114,13 +147,17 @@ struct Test: ParsableCommand {
         }
 
         let transcriber: TranscriberBackend
-        if engine == "whisper" {
-            print("Transcribing with Whisper (\(config.transcription.whisperModel))...")
-            transcriber = WhisperKitTranscriber(config: config.transcription)
-        } else {
-            print("Transcribing with Parakeet...")
-            transcriber = Transcriber(config: config.transcription)
+        switch modelConfig.engine {
+        case "fluidaudio":
+            transcriber = Transcriber(alias: alias, modelName: modelConfig.model)
+        case "whisperkit":
+            transcriber = WhisperKitTranscriber(alias: alias, modelName: modelConfig.model, language: config.transcription.language)
+        default:
+            print("Error: unknown engine '\(modelConfig.engine)'")
+            throw ExitCode.failure
         }
+
+        print("Transcribing with \(alias) (\(modelConfig.model))...")
 
         let semaphore = DispatchSemaphore(value: 0)
         var result = ""
@@ -181,10 +218,15 @@ struct ShowConfig: ParsableCommand {
         let config = Config.load()
         print("Config: \(Config.configPath)")
         print("")
+        print("[models]")
+        for (alias, m) in config.models {
+            print("\(alias) = \"\(m.model)\" (engine: \(m.engine))")
+        }
+        print("")
         print("[hotkey]")
-        print("trigger_auto_enter = \"\(config.hotkey.triggerAutoEnter)\"")
-        print("trigger_no_enter = \"\(config.hotkey.triggerNoEnter)\"")
-        print("trigger_whisper = \"\(config.hotkey.triggerWhisper)\"")
+        for entry in config.hotkey.entries {
+            print("\(entry.key) = \(entry.name) (stt: \(entry.stt), postprocess: \(entry.postprocess), auto_enter: \(entry.autoEnter))")
+        }
         print("cancel_delay = \(config.hotkey.cancelDelay)")
         print("")
         print("[audio]")
@@ -192,8 +234,6 @@ struct ShowConfig: ParsableCommand {
         print("sample_rate = \(config.audio.sampleRate)")
         print("")
         print("[transcription]")
-        print("model = \"\(config.transcription.model)\"")
-        print("whisper_model = \"\(config.transcription.whisperModel)\"")
         print("language = \"\(config.transcription.language)\"")
         print("")
         print("[output]")
@@ -201,5 +241,9 @@ struct ShowConfig: ParsableCommand {
         print("")
         print("[overlay]")
         print("enabled = \(config.overlay.enabled)")
+        print("")
+        print("[postprocess]")
+        print("enabled = \(config.postprocess.enabled)")
+        print("model = \"\(config.postprocess.model)\"")
     }
 }

@@ -48,6 +48,8 @@ class MenuBarController {
             statusItem.button?.contentTintColor = .systemRed
         case .processing:
             statusItem.button?.contentTintColor = .systemOrange
+        case .postprocessing:
+            statusItem.button?.contentTintColor = .systemPurple
         case .done:
             statusItem.button?.contentTintColor = .systemGreen
         }

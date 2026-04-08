@@ -4,27 +4,32 @@ import Foundation
 class Daemon: @unchecked Sendable {
     let config: Config
     let stateManager: AppStateManager
-    let parakeetTranscriber: TranscriberBackend
-    let whisperTranscriber: TranscriberBackend?
+    let transcriberMap: [String: TranscriberBackend]
     let debug: Bool
+    let postProcessor: PostProcessor?
     var recorder: AudioRecorder?
     var hotkeyListener: HotkeyListener?
     var menuBar: MenuBarController?
     var overlay: OverlayController?
 
-    init(config: Config, parakeet: TranscriberBackend, whisper: TranscriberBackend? = nil, debug: Bool = false) {
+    init(config: Config, transcribers: [String: TranscriberBackend], debug: Bool = false) {
         self.config = config
         self.stateManager = AppStateManager()
-        self.parakeetTranscriber = parakeet
-        self.whisperTranscriber = whisper
+        self.transcriberMap = transcribers
         self.debug = debug
+        self.postProcessor = config.postprocess.enabled ? PostProcessor(config: config.postprocess) : nil
     }
 
-    private func transcriber(for keyName: String) -> TranscriberBackend {
-        if keyName == "whisper", let w = whisperTranscriber {
-            return w
+    private func transcriber(for entry: HotkeyEntry) -> TranscriberBackend? {
+        return transcriberMap[entry.stt]
+    }
+
+    private func postMode(for entry: HotkeyEntry) -> PostProcessMode? {
+        switch entry.postprocess {
+        case "normalize": return .normalize
+        case "translate": return .translate
+        default: return nil
         }
-        return parakeetTranscriber
     }
 
     private func log(_ message: String) {
@@ -37,28 +42,26 @@ class Daemon: @unchecked Sendable {
 
         recorder = AudioRecorder(config: config.audio)
 
-        // Setup hotkey listener (runs on main run loop)
         hotkeyListener = HotkeyListener(
             config: config.hotkey,
-            onPress: { [weak self] keyName in
-                self?.onHotkeyPress(keyName)
+            onPress: { [weak self] entry in
+                self?.onHotkeyPress(entry)
             },
-            onRelease: { [weak self] keyName in
-                self?.onHotkeyRelease(keyName)
+            onRelease: { [weak self] entry in
+                self?.onHotkeyRelease(entry)
             },
             onCancel: { [weak self] in
                 self?.onCancel()
             },
-            onToggleStart: { [weak self] keyName in
-                self?.onToggleStart(keyName)
+            onToggleStart: { [weak self] entry in
+                self?.onToggleStart(entry)
             },
-            onToggleStop: { [weak self] keyName in
-                self?.onToggleStop(keyName)
+            onToggleStop: { [weak self] entry in
+                self?.onToggleStop(entry)
             }
         )
         hotkeyListener?.start()
 
-        // Setup UI
         if config.overlay.enabled {
             overlay = OverlayController(stateManager: stateManager)
         }
@@ -71,30 +74,28 @@ class Daemon: @unchecked Sendable {
         setAppIcon()
         print("Ready.")
 
-        // Eager-load whisper model in background (parakeet remains usable)
-        if let whisper = whisperTranscriber {
-            log("Eager-loading whisper model in background...")
+        for (alias, backend) in transcriberMap where !backend.isReady {
+            log("Eager-loading \(alias) model in background...")
             Task.detached {
                 do {
-                    try await whisper.ensureModel()
+                    try await backend.ensureModel()
                 } catch {
-                    print("Failed to load Whisper model: \(error)")
+                    print("Failed to load \(alias) model: \(error)")
                 }
             }
         }
 
-        // Run NSApplication event loop (blocks)
         NSApplication.shared.run()
     }
 
-    private func onHotkeyPress(_ keyName: String) {
+    private func onHotkeyPress(_ entry: HotkeyEntry) {
         guard let recorder = recorder else { return }
-        log("Recording... [\(keyName)]")
+        log("Recording... [\(entry.name)]")
         stateManager.transition(to: .recording)
         recorder.start()
     }
 
-    private func onHotkeyRelease(_ keyName: String) {
+    private func onHotkeyRelease(_ entry: HotkeyEntry) {
         guard let recorder = recorder, recorder.isRecording else { return }
         let (audio, sampleRate) = recorder.stop()
 
@@ -105,8 +106,12 @@ class Daemon: @unchecked Sendable {
             return
         }
 
-        let autoEnter = keyName == "auto_enter"
-        let backend = transcriber(for: keyName)
+        guard let backend = transcriber(for: entry) else {
+            log("No transcriber for stt=\(entry.stt), skipping.")
+            stateManager.transition(to: .idle)
+            return
+        }
+        let mode = postMode(for: entry)
 
         if config.hotkey.cancelDelay > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + config.hotkey.cancelDelay) { [self] in
@@ -116,21 +121,31 @@ class Daemon: @unchecked Sendable {
                     stateManager.transition(to: .idle)
                     return
                 }
-                transcribeAndOutput(audio: audio, sampleRate: sampleRate, autoEnter: autoEnter, backend: backend)
+                transcribeAndOutput(audio: audio, sampleRate: sampleRate, entry: entry, postMode: mode, backend: backend)
             }
         } else {
-            transcribeAndOutput(audio: audio, sampleRate: sampleRate, autoEnter: autoEnter, backend: backend)
+            transcribeAndOutput(audio: audio, sampleRate: sampleRate, entry: entry, postMode: mode, backend: backend)
         }
     }
 
-    private func transcribeAndOutput(audio: [Float], sampleRate: Double, autoEnter: Bool, backend: TranscriberBackend) {
-        stateManager.transition(to: backend.isReady ? .processing : .loading)
+    private func transcribeAndOutput(audio: [Float], sampleRate: Double, entry: HotkeyEntry, postMode: PostProcessMode?, backend: TranscriberBackend) {
+        if !backend.isReady {
+            stateManager.transition(to: .loading, text: "loading \(entry.stt)")
+            if let wk = backend as? WhisperKitTranscriber {
+                wk.onProgress = { [weak self] text in
+                    DispatchQueue.main.async {
+                        self?.stateManager.transition(to: .loading, text: text)
+                    }
+                }
+            }
+        } else {
+            stateManager.transition(to: .processing)
+        }
         let audioDuration = Double(audio.count) / sampleRate
-        log("Transcribing \(String(format: "%.1f", audioDuration))s audio via \(backend.engineName)...")
+        log("Transcribing \(String(format: "%.1f", audioDuration))s audio via \(backend.engineName) [\(entry.name)]...")
         let startTime = CFAbsoluteTimeGetCurrent()
         let cpuBefore = Self.getCPUTime()
 
-        // Run transcription on background thread, bridge async via semaphore
         DispatchQueue.global(qos: .userInitiated).async { [self] in
             let semaphore = DispatchSemaphore(value: 0)
             var result = ""
@@ -162,25 +177,46 @@ class Daemon: @unchecked Sendable {
                     let cpuAfter = Self.getCPUTime()
                     let cpuMs = Int((cpuAfter - cpuBefore) * 1000)
                     self.log("[\(latencyMs)ms, cpu \(cpuMs)ms, RTF \(String(format: "%.2f", rtf)), RSS \(rss)MB] \(result)")
-                    var outConfig = self.config.output
-                    outConfig.autoEnter = autoEnter
-                    Output.outputText(result, config: outConfig)
-                    self.stateManager.transition(to: .done)
+
+                    if let mode = postMode, let pp = self.postProcessor {
+                        let ppLabel = mode == .translate ? "translating" : "postprocess"
+                        self.stateManager.transition(to: .postprocessing, text: ppLabel)
+                        Task.detached {
+                            let ppStart = CFAbsoluteTimeGetCurrent()
+                            var finalText = result
+                            do {
+                                finalText = try await pp.process(result, mode: mode)
+                                let ppMs = Int((CFAbsoluteTimeGetCurrent() - ppStart) * 1000)
+                                self.log("[pp \(ppMs)ms] \(finalText)")
+                            } catch {
+                                self.log("Post-process failed, using raw: \(error)")
+                            }
+                            DispatchQueue.main.async {
+                                var outConfig = self.config.output
+                                outConfig.autoEnter = entry.autoEnter
+                                Output.outputText(finalText, config: outConfig)
+                                self.stateManager.transition(to: .done)
+                            }
+                        }
+                    } else {
+                        var outConfig = self.config.output
+                        outConfig.autoEnter = entry.autoEnter
+                        Output.outputText(result, config: outConfig)
+                        self.stateManager.transition(to: .done)
+                    }
                 }
             }
         }
     }
 
-    private func onToggleStart(_ keyName: String) {
-        // Short tap detected - switch to toggle mode, recording continues
-        log("Toggle mode: recording... tap again to stop [\(keyName)]")
+    private func onToggleStart(_ entry: HotkeyEntry) {
+        log("Toggle mode: recording... tap again to stop [\(entry.name)]")
     }
 
-    private func onToggleStop(_ keyName: String) {
-        // Second tap - stop recording and transcribe
+    private func onToggleStop(_ entry: HotkeyEntry) {
         guard let recorder = recorder, recorder.isRecording else { return }
         let (audio, sampleRate) = recorder.stop()
-        log("Toggle mode: stopped [\(keyName)]")
+        log("Toggle mode: stopped [\(entry.name)]")
 
         let minSamples = Int(Double(sampleRate) * 0.3)
         guard audio.count >= minSamples else {
@@ -189,9 +225,13 @@ class Daemon: @unchecked Sendable {
             return
         }
 
-        let autoEnter = keyName == "auto_enter"
-        let backend = transcriber(for: keyName)
-        transcribeAndOutput(audio: audio, sampleRate: sampleRate, autoEnter: autoEnter, backend: backend)
+        guard let backend = transcriber(for: entry) else {
+            log("No transcriber for stt=\(entry.stt), skipping.")
+            stateManager.transition(to: .idle)
+            return
+        }
+        let mode = postMode(for: entry)
+        transcribeAndOutput(audio: audio, sampleRate: sampleRate, entry: entry, postMode: mode, backend: backend)
     }
 
     private func onCancel() {

@@ -2,26 +2,62 @@ import Foundation
 import WhisperKit
 
 class WhisperKitTranscriber: @unchecked Sendable, TranscriberBackend {
-    let engineName = "whisper"
+    let engineName: String
     var isReady: Bool { isLoaded }
-    private let config: TranscriptionConfig
+    private let modelName: String
+    private let language: String
     private var whisperKit: WhisperKit?
     private var isLoaded = false
+    private var loadingTask: Task<Void, Error>?
+    var onProgress: ((String) -> Void)?
 
-    init(config: TranscriptionConfig) {
-        self.config = config
+    init(alias: String, modelName: String, language: String) {
+        self.engineName = alias
+        self.modelName = modelName
+        self.language = language
     }
 
     func ensureModel() async throws {
         guard !isLoaded else { return }
-        let modelName = config.whisperModel
-        print("Loading model: whisper \(modelName) (CoreML)...")
 
-        let wkConfig = WhisperKitConfig(model: modelName)
-        whisperKit = try await WhisperKit(wkConfig)
+        if let existing = loadingTask {
+            try await existing.value
+            return
+        }
 
-        isLoaded = true
-        print("Whisper model loaded.")
+        let task = Task { [self] in
+            // Phase 1: Download
+            onProgress?("downloading \(engineName)")
+            let modelFolder = try await WhisperKit.download(
+                variant: modelName,
+                progressCallback: { [weak self] progress in
+                    guard let self = self else { return }
+                    let pct = Int(progress.fractionCompleted * 100)
+                    DispatchQueue.main.async {
+                        self.onProgress?("downloading \(self.engineName) \(pct)%")
+                    }
+                }
+            )
+
+            // Phase 2: Load & compile
+            onProgress?("compiling \(engineName)")
+            let wkConfig = WhisperKitConfig(
+                modelFolder: modelFolder.path,
+                prewarm: false,
+                load: false
+            )
+            whisperKit = try await WhisperKit(wkConfig)
+
+            // Phase 3: Warmup
+            onProgress?("warmup \(engineName)")
+            try await whisperKit?.prewarmModels()
+            try await whisperKit?.loadModels()
+
+            isLoaded = true
+            onProgress?("")
+        }
+        loadingTask = task
+        try await task.value
     }
 
     func transcribe(audio: [Float], sampleRate: Double) async throws -> String {
@@ -36,7 +72,7 @@ class WhisperKitTranscriber: @unchecked Sendable, TranscriberBackend {
         }
 
         let options = DecodingOptions(
-            language: config.language,
+            language: language,
             usePrefillPrompt: true
         )
 

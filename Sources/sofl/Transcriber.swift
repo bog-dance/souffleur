@@ -3,9 +3,9 @@ import FluidAudio
 import Foundation
 
 class Transcriber: @unchecked Sendable, TranscriberBackend {
-    let engineName = "parakeet"
+    let engineName: String
     var isReady: Bool { isLoaded }
-    private let config: TranscriptionConfig
+    private let modelName: String
     private var asrManager: AsrManager?
     private var isLoaded = false
 
@@ -14,13 +14,14 @@ class Transcriber: @unchecked Sendable, TranscriberBackend {
         return appSupport.appendingPathComponent("souffleur")
     }
 
-    init(config: TranscriptionConfig) {
-        self.config = config
+    init(alias: String, modelName: String) {
+        self.engineName = alias
+        self.modelName = modelName
     }
 
     func ensureModel() async throws {
         guard !isLoaded else { return }
-        print("Loading model: parakeet-tdt-0.6b-v3 (CoreML)...")
+        print("Loading model: \(modelName) (CoreML)...")
 
         let modelsDir = Self.modelsDirectory
         try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
