@@ -184,18 +184,24 @@ class Daemon: @unchecked Sendable {
                         Task.detached {
                             let ppStart = CFAbsoluteTimeGetCurrent()
                             var finalText = result
+                            var ppFailed = false
                             do {
                                 finalText = try await pp.process(result, mode: mode)
                                 let ppMs = Int((CFAbsoluteTimeGetCurrent() - ppStart) * 1000)
                                 self.log("[pp \(ppMs)ms] \(finalText)")
                             } catch {
+                                ppFailed = true
                                 self.log("Post-process failed, using raw: \(error)")
                             }
                             DispatchQueue.main.async {
                                 var outConfig = self.config.output
                                 outConfig.autoEnter = entry.autoEnter
                                 Output.outputText(finalText, config: outConfig)
-                                self.stateManager.transition(to: .done)
+                                if ppFailed {
+                                    self.stateManager.transition(to: .error, text: "postprocess error")
+                                } else {
+                                    self.stateManager.transition(to: .done)
+                                }
                             }
                         }
                     } else {

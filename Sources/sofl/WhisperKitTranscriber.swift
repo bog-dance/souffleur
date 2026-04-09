@@ -57,7 +57,12 @@ class WhisperKitTranscriber: @unchecked Sendable, TranscriberBackend {
             onProgress?("")
         }
         loadingTask = task
-        try await task.value
+        do {
+            try await task.value
+        } catch {
+            loadingTask = nil
+            throw error
+        }
     }
 
     func transcribe(audio: [Float], sampleRate: Double) async throws -> String {

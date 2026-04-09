@@ -24,7 +24,7 @@ class MenuBarController {
         }
 
         let menu = NSMenu()
-        menu.addItem(withTitle: "Souffleur v1.1.2", action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: "Souffleur v1.3.0", action: nil, keyEquivalent: "")
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
@@ -52,6 +52,8 @@ class MenuBarController {
             statusItem.button?.contentTintColor = .systemPurple
         case .done:
             statusItem.button?.contentTintColor = .systemGreen
+        case .error:
+            statusItem.button?.contentTintColor = .systemRed
         }
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppState: Sendable {
-    case idle, loading, recording, processing, postprocessing, done
+    case idle, loading, recording, processing, postprocessing, done, error
 }
 
 class AppStateManager: @unchecked Sendable, ObservableObject {
@@ -11,9 +11,10 @@ class AppStateManager: @unchecked Sendable, ObservableObject {
     func transition(to newState: AppState, text: String = "") {
         state = newState
         statusText = text
-        if newState == .done {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                if self?.state == .done { self?.state = .idle }
+        if newState == .done || newState == .error {
+            let delay: Double = newState == .error ? 2.0 : 1.0
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                if self?.state == newState { self?.state = .idle }
             }
         }
     }

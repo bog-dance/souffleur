@@ -42,6 +42,10 @@ struct PostProcessConfig {
     var ollamaUrl: String = "http://localhost:11434"
     var model: String = "gemma3:4b"
     var timeout: Double = 10.0
+    var openaiApiKey: String = ""
+    var openaiModel: String = "gpt-4.1"
+    var translatePrompt: String = "Translate the following dictated text into clean, natural English. Return ONLY the final text."
+    var normalizePrompt: String = "Clean up this dictated text. Fix punctuation, capitalization, grammar. Remove filler words. Keep the SAME language. Return ONLY the cleaned text."
 }
 
 struct Config {
@@ -120,6 +124,10 @@ struct Config {
                 if let v = pp["ollama_url"]?.string { config.postprocess.ollamaUrl = v }
                 if let v = pp["model"]?.string { config.postprocess.model = v }
                 if let v = pp["timeout"]?.double { config.postprocess.timeout = v }
+                if let v = pp["openai_api_key"]?.string { config.postprocess.openaiApiKey = v }
+                if let v = pp["openai_model"]?.string { config.postprocess.openaiModel = v }
+                if let v = pp["translate_prompt"]?.string { config.postprocess.translatePrompt = v }
+                if let v = pp["normalize_prompt"]?.string { config.postprocess.normalizePrompt = v }
             }
         } catch {
             print("Warning: failed to parse config: \(error)")

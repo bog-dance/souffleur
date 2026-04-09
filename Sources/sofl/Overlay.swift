@@ -93,6 +93,8 @@ class OverlayController {
             startSpinnerAnimation("transcribing")
         case .postprocessing:
             startSpinnerAnimation("postprocess")
+        case .error:
+            showError()
         case .done, .idle:
             hide()
         }
@@ -117,6 +119,16 @@ class OverlayController {
             self.label?.stringValue = "\(spinner)  \(fallbackText)  \(spinner)"
             self.progressLabel?.stringValue = self.currentText
             self.loadingFrame += 1
+        }
+    }
+
+    private func showError() {
+        show()
+        label?.textColor = NSColor(red: 1.0, green: 0.3, blue: 0.3, alpha: 1.0)
+        label?.stringValue = "⚠  error"
+        progressLabel?.stringValue = currentText
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.label?.textColor = NSColor(red: 0.3, green: 0.85, blue: 0.4, alpha: 1.0)
         }
     }
 
