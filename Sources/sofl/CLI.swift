@@ -4,17 +4,25 @@ import Foundation
 struct Service: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Manage souffleur daemon",
-        subcommands: [Start.self, Install.self, Uninstall.self, Restart.self, Status.self],
+        subcommands: [Start.self, Stop.self, Install.self, Uninstall.self, Restart.self, Status.self],
         defaultSubcommand: Start.self
     )
 
     struct Start: ParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Start the daemon")
+        static let configuration = CommandConfiguration(abstract: "Start the service")
+
+        @Flag(name: .long, help: "Run the daemon in the foreground (used by launchd; not for manual use)")
+        var daemon = false
 
         @Flag(name: .long, help: "Enable debug logging (unbuffered output)")
         var debug = false
 
         func run() throws {
+            // Without --daemon this is the user-facing command: (re)load the launchd service.
+            guard daemon else {
+                ServiceManager.start()
+                return
+            }
             if debug {
                 setbuf(stdout, nil)
                 setbuf(stderr, nil)
@@ -92,6 +100,11 @@ struct Service: ParsableCommand {
             let daemon = Daemon(config: config, transcribers: transcribers, debug: debug)
             daemon.run()
         }
+    }
+
+    struct Stop: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Stop the service (stays down until started again)")
+        func run() { ServiceManager.stop() }
     }
 
     struct Install: ParsableCommand {

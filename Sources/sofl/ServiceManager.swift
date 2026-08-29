@@ -33,6 +33,7 @@ enum ServiceManager {
                 <string>\(binaryPath)</string>
                 <string>service</string>
                 <string>start</string>
+                <string>--daemon</string>
             </array>
             <key>RunAtLoad</key>
             <true/>
@@ -63,8 +64,25 @@ enum ServiceManager {
         print("Service uninstalled.")
     }
 
+    static func start() {
+        guard FileManager.default.fileExists(atPath: plistPath) else {
+            print("Service not installed. Run: sofl service install")
+            return
+        }
+        shell("launchctl", "bootstrap", "gui/\(uid)", plistPath)
+        print("Service started.")
+    }
+
+    static func stop() {
+        shell("launchctl", "bootout", "gui/\(uid)/\(label)")
+        print("Service stopped.")
+    }
+
     static func restart() {
-        shell("launchctl", "kickstart", "-k", "gui/\(uid)/\(label)")
+        shell("launchctl", "bootout", "gui/\(uid)/\(label)")
+        if FileManager.default.fileExists(atPath: plistPath) {
+            shell("launchctl", "bootstrap", "gui/\(uid)", plistPath)
+        }
         print("Service restarted.")
     }
 

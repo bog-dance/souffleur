@@ -67,6 +67,8 @@ class Daemon: @unchecked Sendable {
         }
         menuBar = MenuBarController(stateManager: stateManager, onQuit: { [weak self] in
             self?.stop()
+            // Boot the launchd job out so KeepAlive doesn't relaunch us a second later.
+            ServiceManager.stop()
             NSApp.terminate(nil)
         })
 
