@@ -139,6 +139,9 @@ struct Test: ParsableCommand {
     @Option(name: .shortAndLong, help: "STT model alias (as defined in config [models])")
     var engine: String?
 
+    @Option(name: .long, help: "How many record/transcribe rounds to run in one process")
+    var rounds: Int = 1
+
     func run() throws {
         let config = Config.load()
         let alias = engine ?? config.hotkey.entries.first?.stt ?? "parakeet"
@@ -146,17 +149,6 @@ struct Test: ParsableCommand {
         guard let modelConfig = config.models[alias] else {
             print("Error: no model '\(alias)' in config. Available: \(config.models.keys.joined(separator: ", "))")
             throw ExitCode.failure
-        }
-
-        print("Recording for \(duration) seconds...")
-        let recorder = AudioRecorder(config: config.audio)
-        recorder.start()
-        Thread.sleep(forTimeInterval: duration)
-        let (audio, sampleRate) = recorder.stop()
-
-        guard audio.count > 0 else {
-            print("No audio captured.")
-            return
         }
 
         let transcriber: TranscriberBackend
@@ -168,6 +160,20 @@ struct Test: ParsableCommand {
         default:
             print("Error: unknown engine '\(modelConfig.engine)'")
             throw ExitCode.failure
+        }
+
+        for round in 1...max(rounds, 1) {
+        if rounds > 1 { print("--- round \(round)/\(rounds)") }
+
+        print("Recording for \(duration) seconds...")
+        let recorder = AudioRecorder(config: config.audio)
+        recorder.start()
+        Thread.sleep(forTimeInterval: duration)
+        let (audio, sampleRate) = recorder.stop()
+
+        guard audio.count > 0 else {
+            print("No audio captured.")
+            return
         }
 
         print("Transcribing with \(alias) (\(modelConfig.model))...")
@@ -200,6 +206,7 @@ struct Test: ParsableCommand {
             print("No speech detected.")
         } else {
             print("Result: \(result)")
+        }
         }
     }
 }

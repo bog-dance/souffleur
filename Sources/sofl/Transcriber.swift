@@ -8,7 +8,8 @@ class Transcriber: @unchecked Sendable, TranscriberBackend {
     private let modelName: String
     private let language: Language?
     private let vocabulary: VocabularyConfig
-    private var manager: SlidingWindowAsrManager?
+    private var models: AsrModels?
+    private var ctcModels: CtcModels?
     private var isLoaded = false
 
     private static var modelsDirectory: URL {
@@ -37,20 +38,13 @@ class Transcriber: @unchecked Sendable, TranscriberBackend {
         }
         print("")
 
-        let asr = SlidingWindowAsrManager(config: SlidingWindowAsrConfig.default.applying(language: language))
-        try await asr.loadModels(models)
-
         if vocabulary.isActive {
             print("Loading CTC models for vocabulary boosting...")
-            let ctcModels = try await CtcModels.downloadAndLoad()
-            try await asr.configureVocabularyBoosting(
-                vocabulary: Self.context(from: vocabulary),
-                ctcModels: ctcModels
-            )
+            ctcModels = try await CtcModels.downloadAndLoad()
             print("Vocabulary boosting: \(vocabulary.terms.count) terms.")
         }
 
-        manager = asr
+        self.models = models
         isLoaded = true
         print("Model loaded.")
     }
@@ -72,9 +66,29 @@ class Transcriber: @unchecked Sendable, TranscriberBackend {
         )
     }
 
+    /// SlidingWindowAsrManager is single-use: finish() closes the input stream for good
+    /// and reset() does not rebuild it, so each utterance gets a fresh manager over the
+    /// already-loaded models.
+    private func makeManager() async throws -> SlidingWindowAsrManager {
+        guard let models else { throw ASRError.notInitialized }
+
+        let manager = SlidingWindowAsrManager(
+            config: SlidingWindowAsrConfig.default.applying(language: language)
+        )
+        try await manager.loadModels(models)
+
+        if let ctcModels, vocabulary.isActive {
+            try await manager.configureVocabularyBoosting(
+                vocabulary: Self.context(from: vocabulary),
+                ctcModels: ctcModels
+            )
+        }
+
+        return manager
+    }
+
     func transcribe(audio: [Float], sampleRate: Double) async throws -> String {
         try await ensureModel()
-        guard let manager else { return "" }
 
         guard let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -93,10 +107,11 @@ class Transcriber: @unchecked Sendable, TranscriberBackend {
             }
         }
 
+        let manager = try await makeManager()
         try await manager.startStreaming(source: .microphone)
         await manager.streamAudio(buffer)
         let text = try await manager.finish()
-        try await manager.reset()
+        await manager.cleanup()
 
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
