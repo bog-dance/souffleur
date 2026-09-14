@@ -28,6 +28,24 @@ struct TranscriptionConfig {
     var language: String = "uk"
 }
 
+struct VocabularyTerm {
+    var text: String
+    var aliases: [String] = []
+    var weight: Float?
+    var minSimilarity: Float?
+}
+
+struct VocabularyConfig {
+    var enabled: Bool = true
+    var terms: [VocabularyTerm] = []
+    var minSimilarity: Float?
+    var minTermLength: Int?
+    /// Acoustic rescue recovers mangled terms but over-fires on short vocabularies.
+    var spotterRescue: Bool = true
+
+    var isActive: Bool { enabled && !terms.isEmpty }
+}
+
 struct OutputConfig {
     var autoPaste: Bool = true
     var autoEnter: Bool = false
@@ -53,6 +71,7 @@ struct Config {
     var hotkey = HotkeyConfig()
     var audio = AudioConfig()
     var transcription = TranscriptionConfig()
+    var vocabulary = VocabularyConfig()
     var output = OutputConfig()
     var overlay = OverlayConfig()
     var postprocess = PostProcessConfig()
@@ -109,6 +128,28 @@ struct Config {
 
             if let transcription = table["transcription"]?.table {
                 if let v = transcription["language"]?.string { config.transcription.language = v }
+            }
+
+            if let vocab = table["vocabulary"]?.table {
+                if let v = vocab["enabled"]?.bool { config.vocabulary.enabled = v }
+                if let v = vocab["min_similarity"]?.double { config.vocabulary.minSimilarity = Float(v) }
+                if let v = vocab["min_term_length"]?.int { config.vocabulary.minTermLength = v }
+                if let v = vocab["spotter_rescue"]?.bool { config.vocabulary.spotterRescue = v }
+
+                if let terms = vocab["terms"]?.array {
+                    for item in terms {
+                        if let text = item.string {
+                            config.vocabulary.terms.append(VocabularyTerm(text: text))
+                            continue
+                        }
+                        guard let t = item.table, let text = t["text"]?.string else { continue }
+                        var term = VocabularyTerm(text: text)
+                        if let a = t["aliases"]?.array { term.aliases = a.compactMap { $0.string } }
+                        if let v = t["weight"]?.double { term.weight = Float(v) }
+                        if let v = t["min_similarity"]?.double { term.minSimilarity = Float(v) }
+                        config.vocabulary.terms.append(term)
+                    }
+                }
             }
 
             if let output = table["output"]?.table {

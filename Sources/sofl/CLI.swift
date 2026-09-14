@@ -53,7 +53,7 @@ struct Service: ParsableCommand {
                 let backend: TranscriberBackend
                 switch modelConfig.engine {
                 case "fluidaudio":
-                    backend = Transcriber(alias: alias, modelName: modelConfig.model)
+                    backend = Transcriber(alias: alias, modelName: modelConfig.model, language: config.transcription.language, vocabulary: config.vocabulary)
                 case "whisperkit":
                     backend = WhisperKitTranscriber(alias: alias, modelName: modelConfig.model, language: config.transcription.language)
                 default:
@@ -162,7 +162,7 @@ struct Test: ParsableCommand {
         let transcriber: TranscriberBackend
         switch modelConfig.engine {
         case "fluidaudio":
-            transcriber = Transcriber(alias: alias, modelName: modelConfig.model)
+            transcriber = Transcriber(alias: alias, modelName: modelConfig.model, language: config.transcription.language, vocabulary: config.vocabulary)
         case "whisperkit":
             transcriber = WhisperKitTranscriber(alias: alias, modelName: modelConfig.model, language: config.transcription.language)
         default:
