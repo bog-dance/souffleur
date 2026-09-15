@@ -117,18 +117,20 @@ enum ServiceManager {
     }
 
     private static func findBinary() -> String? {
-        // Resolve symlinks to get the real path (inside .app bundle)
-        let candidates: [String] = [
+        // Keep the symlink: resolving it pins launchd to a versioned Cellar directory,
+        // which the next brew upgrade deletes - the job then dies with exit 78. The
+        // stable path also keeps Accessibility pointed at one place across versions.
+        let stable: [String] = [
             "/opt/homebrew/bin/sofl",
             "/usr/local/bin/sofl",
-            ProcessInfo.processInfo.arguments.first ?? "",
         ]
-        for path in candidates {
-            guard !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) else { continue }
-            let resolved = (path as NSString).resolvingSymlinksInPath
-            return resolved
+        for path in stable where FileManager.default.isExecutableFile(atPath: path) {
+            return path
         }
-        return nil
+
+        let argv0 = ProcessInfo.processInfo.arguments.first ?? ""
+        guard !argv0.isEmpty, FileManager.default.isExecutableFile(atPath: argv0) else { return nil }
+        return (argv0 as NSString).resolvingSymlinksInPath
     }
 
     private static func openAccessibilitySettings() {
