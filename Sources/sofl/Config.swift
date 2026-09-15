@@ -76,11 +76,17 @@ struct Config {
     var overlay = OverlayConfig()
     var postprocess = PostProcessConfig()
 
-    static var configPath: String {
+    static var configDirectory: String {
         let xdgConfig = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
             ?? NSHomeDirectory() + "/.config"
-        return xdgConfig + "/souffleur/config.toml"
+        return xdgConfig + "/souffleur"
     }
+
+    static var configPath: String { configDirectory + "/config.toml" }
+
+    /// Terms live in their own file because they are the one thing edited mid-session,
+    /// often by voice. A typo there must not be able to break hotkeys or models.
+    static var vocabularyPath: String { configDirectory + "/vocabulary.toml" }
 
     static func load() -> Config {
         var config = Config()
@@ -131,25 +137,7 @@ struct Config {
             }
 
             if let vocab = table["vocabulary"]?.table {
-                if let v = vocab["enabled"]?.bool { config.vocabulary.enabled = v }
-                if let v = vocab["min_similarity"]?.double { config.vocabulary.minSimilarity = Float(v) }
-                if let v = vocab["min_term_length"]?.int { config.vocabulary.minTermLength = v }
-                if let v = vocab["spotter_rescue"]?.bool { config.vocabulary.spotterRescue = v }
-
-                if let terms = vocab["terms"]?.array {
-                    for item in terms {
-                        if let text = item.string {
-                            config.vocabulary.terms.append(VocabularyTerm(text: text))
-                            continue
-                        }
-                        guard let t = item.table, let text = t["text"]?.string else { continue }
-                        var term = VocabularyTerm(text: text)
-                        if let a = t["aliases"]?.array { term.aliases = a.compactMap { $0.string } }
-                        if let v = t["weight"]?.double { term.weight = Float(v) }
-                        if let v = t["min_similarity"]?.double { term.minSimilarity = Float(v) }
-                        config.vocabulary.terms.append(term)
-                    }
-                }
+                applyVocabulary(vocab, to: &config.vocabulary)
             }
 
             if let output = table["output"]?.table {
@@ -174,6 +162,59 @@ struct Config {
             print("Warning: failed to parse config: \(error)")
         }
 
+        mergeVocabularyFile(into: &config.vocabulary)
+
         return config
+    }
+
+    /// Reads vocabulary.toml alone, for the watcher: a bad edit there costs the terms,
+    /// never the running daemon.
+    static func loadVocabulary() -> VocabularyConfig {
+        var vocabulary = VocabularyConfig()
+
+        if let data = FileManager.default.contents(atPath: configPath),
+           let content = String(data: data, encoding: .utf8),
+           let table = try? TOMLTable(string: content),
+           let vocab = table["vocabulary"]?.table {
+            applyVocabulary(vocab, to: &vocabulary)
+        }
+
+        mergeVocabularyFile(into: &vocabulary)
+        return vocabulary
+    }
+
+    /// vocabulary.toml may hold the terms bare at the top level or under [vocabulary];
+    /// both read the same, and its terms are appended to whatever config.toml declared.
+    private static func mergeVocabularyFile(into vocabulary: inout VocabularyConfig) {
+        guard let data = FileManager.default.contents(atPath: vocabularyPath),
+              let content = String(data: data, encoding: .utf8) else { return }
+
+        do {
+            let table = try TOMLTable(string: content)
+            applyVocabulary(table["vocabulary"]?.table ?? table, to: &vocabulary)
+        } catch {
+            print("Warning: failed to parse \(vocabularyPath): \(error)")
+        }
+    }
+
+    private static func applyVocabulary(_ table: TOMLTable, to vocabulary: inout VocabularyConfig) {
+        if let v = table["enabled"]?.bool { vocabulary.enabled = v }
+        if let v = table["min_similarity"]?.double { vocabulary.minSimilarity = Float(v) }
+        if let v = table["min_term_length"]?.int { vocabulary.minTermLength = v }
+        if let v = table["spotter_rescue"]?.bool { vocabulary.spotterRescue = v }
+
+        guard let terms = table["terms"]?.array else { return }
+        for item in terms {
+            if let text = item.string {
+                vocabulary.terms.append(VocabularyTerm(text: text))
+                continue
+            }
+            guard let t = item.table, let text = t["text"]?.string else { continue }
+            var term = VocabularyTerm(text: text)
+            if let a = t["aliases"]?.array { term.aliases = a.compactMap { $0.string } }
+            if let v = t["weight"]?.double { term.weight = Float(v) }
+            if let v = t["min_similarity"]?.double { term.minSimilarity = Float(v) }
+            vocabulary.terms.append(term)
+        }
     }
 }

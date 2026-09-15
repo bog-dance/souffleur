@@ -7,7 +7,7 @@ class Transcriber: @unchecked Sendable, TranscriberBackend {
     var isReady: Bool { isLoaded }
     private let modelName: String
     private let language: Language?
-    private let vocabulary: VocabularyConfig
+    private var vocabulary: VocabularyConfig
     private var models: AsrModels?
     private var ctcModels: CtcModels?
     private var isLoaded = false
@@ -47,6 +47,12 @@ class Transcriber: @unchecked Sendable, TranscriberBackend {
         self.models = models
         isLoaded = true
         print("Model loaded.")
+    }
+
+    /// makeManager() rebuilds the boosting context per utterance, so swapping this
+    /// takes effect on the next phrase without touching the loaded models.
+    func updateVocabulary(_ vocabulary: VocabularyConfig) {
+        self.vocabulary = vocabulary
     }
 
     private static func context(from config: VocabularyConfig) -> CustomVocabularyContext {

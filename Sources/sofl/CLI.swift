@@ -68,6 +68,14 @@ struct Service: ParsableCommand {
                 throw ExitCode.failure
             }
 
+            // Terms are rebuilt per utterance, so an edit to vocabulary.toml reaches
+            // the next phrase without reloading the models.
+            let boosted = transcribers.values.compactMap { $0 as? Transcriber }
+            let watcher = VocabularyWatcher(initial: config.vocabulary) { vocabulary in
+                for transcriber in boosted { transcriber.updateVocabulary(vocabulary) }
+            }
+            watcher.start()
+
             // Eager-load the first transcriber (blocking) so it's ready immediately
             let firstAlias = config.hotkey.entries.first!.stt
             if let first = transcribers[firstAlias] {
