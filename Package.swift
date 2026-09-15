@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
-        .package(url: "https://github.com/FluidInference/FluidAudio", exact: "0.15.7"),
+        .package(url: "https://github.com/bog-dance/FluidAudio", revision: "051aaf9ea55d449f35d4ea0b3c60b51cbbb586d3"),
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0"),
         .package(url: "https://github.com/LebJe/TOMLKit", from: "0.6.0"),
     ],
