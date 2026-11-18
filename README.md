@@ -12,7 +12,15 @@ brew install souffleur
 sofl service install
 ```
 
-Grant **Accessibility** and **Microphone** permissions when prompted.
+Grant **Accessibility** and **Microphone** permissions when prompted. The daemon runs from a copy at `~/Library/Application Support/souffleur/bin/sofl` that keeps its path across releases, so the grants are asked for once, not after every upgrade. It picks up the Accessibility toggle by itself.
+
+## Upgrade
+
+```bash
+brew update && brew upgrade souffleur
+```
+
+The formula restarts the service, which refreshes its copy. Models, config and permissions carry over. Coming from 1.7.0 or earlier, macOS asks once more for Accessibility (and Microphone on the first dictation), now for the stable path; after that, upgrades need nothing.
 
 ## Usage
 
@@ -70,13 +78,13 @@ Two Parakeet TDT 0.6B v3 builds run through the `fluidaudio` engine. Pick one wi
 | `model` | What it is | Languages | Download |
 |---|---|---|---|
 | `parakeet-tdt-0.6b-v3-uk` (default) | [ihnatov-yuri/parakeet-tdt-0.6b-v3-uk](https://huggingface.co/ihnatov-yuri/parakeet-tdt-0.6b-v3-uk), CoreML int8 | Ukrainian + English | ~630 MB, first start |
-| `parakeet-tdt-0.6b-v3` | NVIDIA's stock multilingual v3 via FluidAudio | 25 European languages | ~0.5 GB, first start |
+| `parakeet-tdt-0.6b-v3-stock` | NVIDIA's stock multilingual v3 via FluidAudio | 25 European languages | ~0.5 GB, first start |
 
 **Ukrainian fine-tune (default).** Ukrainian stays Ukrainian on short phrases ("Вимкни", "тридцять вісім" instead of the stock model's "Выключи", "тридцать восемь"), and English words inside Ukrainian speech stay in Latin ("WhatsApp", "Order Go Jack from this place to my home"). It has no letter filter: the fine-tune does not produce Russian-only letters, and the filter would also strip every Latin token. `[transcription] language` is ignored for this model. It knows only Ukrainian and English and is likely worse than stock for Russian and every other language, so **if you do not dictate in Ukrainian, use the stock model.** Files go to `~/Library/Application Support/souffleur/models/parakeet-tdt-0.6b-v3-uk/`, pinned to revision `5c4bcfa`.
 
-**Stock multilingual.** Set `model = "parakeet-tdt-0.6b-v3"`. FluidAudio downloads it to `~/Library/Application Support/parakeet-tdt-0.6b-v3/` as before. Here `[transcription] language` drives the decoder's token filter: it keeps tokens in the language's script, and for `uk` also drops Russian-only letters (`ы э ъ ё`). Mind that `uk` also blocks Latin, so English words come out in Cyrillic. Any value that is not a language code (e.g. `"none"`) turns the filter off.
+**Stock multilingual.** Set `model = "parakeet-tdt-0.6b-v3-stock"`. FluidAudio downloads it to `~/Library/Application Support/parakeet-tdt-0.6b-v3/` as before. Here `[transcription] language` drives the decoder's token filter: it keeps tokens in the language's script, and for `uk` also drops Russian-only letters (`ы э ъ ё`). Mind that `uk` also blocks Latin, so English words come out in Cyrillic. Any value that is not a language code (e.g. `"none"`) turns the filter off.
 
-Upgrading from 1.6.0 or earlier: the old default config says `model = "parakeet-tdt-0.6b-v3"`, which now means stock. Change it to `parakeet-tdt-0.6b-v3-uk` to get the fine-tune.
+Upgrading from 1.7.0 or earlier: `model = "parakeet-tdt-0.6b-v3"` was the only model name, so on first start souffleur rewrites it to `parakeet-tdt-0.6b-v3-uk` (backup in `config.toml.bak-1.7.0`). To keep the multilingual model, set `parakeet-tdt-0.6b-v3-stock`; the rewrite never touches it.
 
 Model credit: the Ukrainian fine-tune is by [ihnatov-yuri](https://huggingface.co/ihnatov-yuri), released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), based on [nvidia/parakeet-tdt-0.6b-v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) (CC BY 4.0).
 

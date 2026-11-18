@@ -94,9 +94,10 @@ struct Config {
 
         guard FileManager.default.fileExists(atPath: path),
               let data = FileManager.default.contents(atPath: path),
-              let content = String(data: data, encoding: .utf8) else {
+              var content = String(data: data, encoding: .utf8) else {
             return config
         }
+        content = migrateLegacyModel(content, at: path)
 
         do {
             let table = try TOMLTable(string: content)
@@ -165,6 +166,32 @@ struct Config {
         mergeVocabularyFile(into: &config.vocabulary)
 
         return config
+    }
+
+    /// Configs up to 1.7.0 name the only Parakeet there was, `parakeet-tdt-0.6b-v3`.
+    /// Since 1.7.1 that line means the new default, so it is rewritten once, with a backup;
+    /// stock has its own explicit name the rewrite never touches.
+    private static func migrateLegacyModel(_ content: String, at path: String) -> String {
+        let legacy = ParakeetModel.legacyDefaultName
+        let pattern = "(?m)^(\\s*model\\s*=\\s*)\"\(NSRegularExpression.escapedPattern(for: legacy))\"(\\s*(#.*)?)$"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return content }
+        let range = NSRange(content.startIndex..., in: content)
+        guard regex.firstMatch(in: content, range: range) != nil else { return content }
+
+        let migrated = regex.stringByReplacingMatches(
+            in: content, range: range,
+            withTemplate: "$1\"\(ParakeetModel.ukrainian.rawValue)\"$2")
+        let backup = path + ".bak-1.7.0"
+        do {
+            if !FileManager.default.fileExists(atPath: backup) {
+                try content.write(toFile: backup, atomically: true, encoding: .utf8)
+            }
+            try migrated.write(toFile: path, atomically: false, encoding: .utf8)
+            print("Config: model \"\(legacy)\" -> \"\(ParakeetModel.ukrainian.rawValue)\" (backup \(backup))")
+        } catch {
+            print("Warning: could not migrate \(path): \(error.localizedDescription)")
+        }
+        return migrated
     }
 
     /// Reads vocabulary.toml alone, for the watcher: a bad edit there costs the terms,

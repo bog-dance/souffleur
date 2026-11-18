@@ -7,13 +7,19 @@ enum ParakeetModel: String {
     /// ihnatov-yuri/parakeet-tdt-0.6b-v3-uk: Ukrainian + English fine-tune, the default.
     case ukrainian = "parakeet-tdt-0.6b-v3-uk"
     /// NVIDIA's multilingual v3 (25 languages), downloaded by FluidAudio.
-    case stock = "parakeet-tdt-0.6b-v3"
+    case stock = "parakeet-tdt-0.6b-v3-stock"
 
     static let folderName = "parakeet-tdt-0.6b-v3"
+
+    /// The only model name before 1.7.1, so it says nothing about wanting stock;
+    /// Config.load rewrites it to the default.
+    static let legacyDefaultName = "parakeet-tdt-0.6b-v3"
 
     init(configName: String) {
         if let model = ParakeetModel(rawValue: configName) {
             self = model
+        } else if configName == Self.legacyDefaultName {
+            self = .ukrainian
         } else {
             print("Warning: unknown parakeet model '\(configName)', using \(ParakeetModel.ukrainian.rawValue)")
             self = .ukrainian

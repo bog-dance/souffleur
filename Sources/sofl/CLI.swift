@@ -27,7 +27,11 @@ struct Service: ParsableCommand {
             if debug {
                 setbuf(stdout, nil)
                 setbuf(stderr, nil)
+            } else {
+                // The log is a file, so stdout would otherwise flush only every few KB.
+                setvbuf(stdout, nil, _IOLBF, 0)
             }
+            StableBinary.execFromStableCopy()
 
             let config = Config.load()
 

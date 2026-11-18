@@ -1,3 +1,4 @@
+import ApplicationServices
 import CoreGraphics
 import Foundation
 
@@ -60,7 +61,8 @@ class HotkeyListener {
             callback: hotkeyCallback,
             userInfo: refcon
         ) else {
-            print("Error: failed to create event tap. Grant Accessibility permissions in System Settings.")
+            print("Error: failed to create event tap. Grant Accessibility to \(Bundle.main.executablePath ?? "sofl") in System Settings.")
+            waitForAccessibility()
             return
         }
 
@@ -69,6 +71,21 @@ class HotkeyListener {
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         print("Hotkeys registered: \(keys.values.map { "\($0.name)=\($0.key)" }.joined(separator: ", "))")
+    }
+
+    /// Shows the system prompt that lists this binary under Accessibility, then picks the
+    /// grant up by itself, so the toggle is the only thing the user has to do.
+    private func waitForAccessibility() {
+        let prompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        _ = AXIsProcessTrustedWithOptions([prompt: true] as CFDictionary)
+        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
+            guard AXIsProcessTrusted() else { return }
+            timer.invalidate()
+            print("Accessibility granted.")
+            self?.start()
+            // A tap that still fails needs a fresh process; launchd's KeepAlive starts one.
+            if self?.eventTap == nil { exit(0) }
+        }
     }
 
     func stop() {
