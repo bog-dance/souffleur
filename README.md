@@ -12,7 +12,7 @@ brew install souffleur
 sofl service install
 ```
 
-Grant **Accessibility** and **Microphone** permissions when prompted. The daemon runs from a copy at `~/Library/Application Support/souffleur/bin/sofl` that keeps its path across releases, so the grants are asked for once, not after every upgrade. It picks up the Accessibility toggle by itself.
+Grant **Accessibility** and **Microphone** permissions when prompted. The launch agent runs a copy at `~/Library/Application Support/souffleur/bin/sofl` that keeps its path across releases, so the grants are asked for once, not after every upgrade. The daemon picks up the Accessibility toggle by itself.
 
 ## Upgrade
 
@@ -20,7 +20,7 @@ Grant **Accessibility** and **Microphone** permissions when prompted. The daemon
 brew update && brew upgrade souffleur
 ```
 
-The formula restarts the service, which refreshes its copy. Models, config and permissions carry over. Coming from 1.7.0 or earlier, macOS asks once more for Accessibility (and Microphone on the first dictation), now for the stable path; after that, upgrades need nothing.
+The formula restarts the service; the daemon copies the new release over its stable copy and restarts into it. Models, config and permissions carry over. Coming from 1.7.1 or earlier, the launch agent is switched to the stable path on the first start and macOS records the grants for that path once: with the same signature it usually does this by itself, otherwise it shows the Accessibility prompt and the daemon picks up the toggle without a restart.
 
 ## Usage
 
