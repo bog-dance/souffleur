@@ -5,38 +5,45 @@ import Foundation
 class Transcriber: @unchecked Sendable, TranscriberBackend {
     let engineName: String
     var isReady: Bool { isLoaded }
-    private let modelName: String
+    private let model: ParakeetModel
     private let language: Language?
     private var vocabulary: VocabularyConfig
     private var models: AsrModels?
     private var ctcModels: CtcModels?
     private var isLoaded = false
 
-    private static var modelsDirectory: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("souffleur")
-    }
-
     init(alias: String, modelName: String, language: String = "uk", vocabulary: VocabularyConfig = VocabularyConfig()) {
         self.engineName = alias
-        self.modelName = modelName
-        self.language = Language(rawValue: language)
+        self.model = ParakeetModel(configName: modelName)
+        self.language = model.usesLanguageFilter ? Language(rawValue: language) : nil
         self.vocabulary = vocabulary
     }
 
     func ensureModel() async throws {
         guard !isLoaded else { return }
-        print("Loading model: \(modelName) (CoreML)...")
+        print("Loading model: \(model.rawValue) (CoreML)...")
 
-        let modelsDir = Self.modelsDirectory
-        try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
-
-        let models = try await AsrModels.load(from: modelsDir, version: .v3) { progress in
-            let pct = Int(progress.fractionCompleted * 100)
-            print("Downloading model: \(pct)%...", terminator: "\r")
-            fflush(stdout)
+        let models: AsrModels
+        switch model {
+        case .stock:
+            try ParakeetModelStore.prepareStock()
+            let modelsDir = ParakeetModelStore.stockLoadDirectory
+            try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+            models = try await AsrModels.load(from: modelsDir, version: .v3) { progress in
+                let pct = Int(progress.fractionCompleted * 100)
+                print("Downloading model: \(pct)%...", terminator: "\r")
+                fflush(stdout)
+            }
+            print("")
+        case .ukrainian:
+            let folder = try await ParakeetModelStore.prepareUkrainian()
+            // On a failed load ModelHub wipes the folder and fetches stock v3 into it;
+            // offline mode turns that silent swap into an error.
+            let wasOffline = ModelHub.offlineMode
+            ModelHub.offlineMode = true
+            defer { ModelHub.offlineMode = wasOffline }
+            models = try await AsrModels.load(from: folder, version: .v3)
         }
-        print("")
 
         if vocabulary.isActive {
             print("Loading CTC models for vocabulary boosting...")

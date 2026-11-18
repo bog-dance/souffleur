@@ -1,4 +1,5 @@
 import ArgumentParser
+import AVFoundation
 import Foundation
 
 struct Service: ParsableCommand {
@@ -150,6 +151,9 @@ struct Test: ParsableCommand {
     @Option(name: .long, help: "How many record/transcribe rounds to run in one process")
     var rounds: Int = 1
 
+    @Option(name: .long, help: "Transcribe these audio files instead of recording (repeatable)")
+    var file: [String] = []
+
     func run() throws {
         let config = Config.load()
         let alias = engine ?? config.hotkey.entries.first?.stt ?? "parakeet"
@@ -170,14 +174,22 @@ struct Test: ParsableCommand {
             throw ExitCode.failure
         }
 
-        for round in 1...max(rounds, 1) {
-        if rounds > 1 { print("--- round \(round)/\(rounds)") }
+        let total = file.isEmpty ? max(rounds, 1) : file.count
+        for round in 1...total {
+        if total > 1 { print("--- round \(round)/\(total)") }
 
-        print("Recording for \(duration) seconds...")
-        let recorder = AudioRecorder(config: config.audio)
-        recorder.start()
-        Thread.sleep(forTimeInterval: duration)
-        let (audio, sampleRate) = recorder.stop()
+        let audio: [Float]
+        let sampleRate: Double
+        if file.isEmpty {
+            print("Recording for \(duration) seconds...")
+            let recorder = AudioRecorder(config: config.audio)
+            recorder.start()
+            Thread.sleep(forTimeInterval: duration)
+            (audio, sampleRate) = recorder.stop()
+        } else {
+            print("File: \(file[round - 1])")
+            (audio, sampleRate) = try Self.readMono(file[round - 1])
+        }
 
         guard audio.count > 0 else {
             print("No audio captured.")
@@ -216,6 +228,21 @@ struct Test: ParsableCommand {
             print("Result: \(result)")
         }
         }
+    }
+
+    private static func readMono(_ path: String) throws -> ([Float], Double) {
+        let file = try AVAudioFile(forReading: URL(fileURLWithPath: path))
+        let format = file.processingFormat
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)),
+              (try? file.read(into: buffer)) != nil,
+              let channels = buffer.floatChannelData else { return ([], format.sampleRate) }
+        let frames = Int(buffer.frameLength)
+        let count = Int(format.channelCount)
+        var mono = [Float](repeating: 0, count: frames)
+        for c in 0..<count {
+            for i in 0..<frames { mono[i] += channels[c][i] / Float(count) }
+        }
+        return (mono, format.sampleRate)
     }
 }
 

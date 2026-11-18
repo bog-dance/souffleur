@@ -2,7 +2,7 @@
 
 Local speech-to-text daemon for macOS. Hold a hotkey, speak, release - text gets typed into the active app.
 
-Powered by [Parakeet](https://github.com/NVIDIA/NeMo) running on-device via CoreML. No cloud, no telemetry.
+Powered by [Parakeet](https://github.com/NVIDIA/NeMo) running on-device via CoreML. No cloud, no telemetry. The default model is a Ukrainian + English fine-tune; the stock multilingual Parakeet is one config line away (see [Models](#models)).
 
 ## Install
 
@@ -26,7 +26,7 @@ sofl service install    Install as launchd service (auto-start at login)
 sofl service uninstall  Remove launchd service
 sofl service restart    Restart the service
 sofl service status     Show service status
-sofl test               Test recording and transcription
+sofl test               Test recording and transcription (--file a.wav to transcribe a file)
 sofl devices            List audio input devices
 sofl config             Show current configuration
 ```
@@ -40,7 +40,7 @@ Default config (one hotkey, Parakeet only):
 ```toml
 [models.parakeet]
 engine = "fluidaudio"
-model = "parakeet-tdt-0.6b-v3"
+model = "parakeet-tdt-0.6b-v3-uk"
 
 [[hotkey.keys]]
 key = "f3"
@@ -62,6 +62,23 @@ auto_paste = true
 [overlay]
 enabled = true
 ```
+
+## Models
+
+Two Parakeet TDT 0.6B v3 builds run through the `fluidaudio` engine. Pick one with `model` in `[models.parakeet]`:
+
+| `model` | What it is | Languages | Download |
+|---|---|---|---|
+| `parakeet-tdt-0.6b-v3-uk` (default) | [ihnatov-yuri/parakeet-tdt-0.6b-v3-uk](https://huggingface.co/ihnatov-yuri/parakeet-tdt-0.6b-v3-uk), CoreML int8 | Ukrainian + English | ~630 MB, first start |
+| `parakeet-tdt-0.6b-v3` | NVIDIA's stock multilingual v3 via FluidAudio | 25 European languages | ~0.5 GB, first start |
+
+**Ukrainian fine-tune (default).** Ukrainian stays Ukrainian on short phrases ("Вимкни", "тридцять вісім" instead of the stock model's "Выключи", "тридцать восемь"), and English words inside Ukrainian speech stay in Latin ("WhatsApp", "Order Go Jack from this place to my home"). It has no letter filter: the fine-tune does not produce Russian-only letters, and the filter would also strip every Latin token. `[transcription] language` is ignored for this model. It knows only Ukrainian and English and is likely worse than stock for Russian and every other language, so **if you do not dictate in Ukrainian, use the stock model.** Files go to `~/Library/Application Support/souffleur/models/parakeet-tdt-0.6b-v3-uk/`, pinned to revision `5c4bcfa`.
+
+**Stock multilingual.** Set `model = "parakeet-tdt-0.6b-v3"`. FluidAudio downloads it to `~/Library/Application Support/parakeet-tdt-0.6b-v3/` as before. Here `[transcription] language` drives the decoder's token filter: it keeps tokens in the language's script, and for `uk` also drops Russian-only letters (`ы э ъ ё`). Mind that `uk` also blocks Latin, so English words come out in Cyrillic. Any value that is not a language code (e.g. `"none"`) turns the filter off.
+
+Upgrading from 1.6.0 or earlier: the old default config says `model = "parakeet-tdt-0.6b-v3"`, which now means stock. Change it to `parakeet-tdt-0.6b-v3-uk` to get the fine-tune.
+
+Model credit: the Ukrainian fine-tune is by [ihnatov-yuri](https://huggingface.co/ihnatov-yuri), released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), based on [nvidia/parakeet-tdt-0.6b-v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) (CC BY 4.0).
 
 ## Advanced
 
@@ -148,7 +165,7 @@ When `translate` mode is selected and an OpenAI key is set, OpenAI is used; othe
 Souffleur runs as a background daemon with a menu bar icon. It listens for global hotkeys, records audio from the microphone, transcribes it locally using a CoreML model, and types the result into the active app via the pasteboard.
 
 Available transcription backends:
-- **Parakeet** (NVIDIA NeMo via [FluidAudio](https://github.com/FluidInference/FluidAudio)) - fast, default
+- **Parakeet** (NVIDIA NeMo via [FluidAudio](https://github.com/FluidInference/FluidAudio)) - fast, default; Ukrainian fine-tune or stock multilingual, see [Models](#models)
 - **WhisperKit** (OpenAI Whisper via [WhisperKit](https://github.com/argmaxinc/WhisperKit)) - more accurate for some languages
 
 Both run entirely on-device. LLM post-processing (Ollama and OpenAI) is opt-in.
