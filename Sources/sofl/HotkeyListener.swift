@@ -24,6 +24,9 @@ class HotkeyListener {
     var onPress: ((HotkeyEntry) -> Void)?
     var onRelease: ((HotkeyEntry) -> Void)?
     var onCancel: (() -> Void)?
+    /// True while a released recording is still being transcribed and not yet pasted.
+    var hasPendingOutput: (() -> Bool)?
+    var debug = false
     var onToggleStart: ((HotkeyEntry) -> Void)?
     var onToggleStop: ((HotkeyEntry) -> Void)?
 
@@ -108,8 +111,14 @@ class HotkeyListener {
         let keyCode = Int64(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
 
-        // Escape during recording (both modes)
-        if keyCode == 53 && type == .keyDown && _isRecording {
+        if debug && (keyCode == 53 || keys[keyCode] != nil)
+            && event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+            print("key \(keyCode) \(type == .keyDown ? "down" : "up") recording=\(_isRecording) held=\(pressedEntry?.name ?? "-")")
+        }
+
+        // Escape cancels while recording and also after release, until the text is pasted:
+        // Karabiner can deliver the F3 keyUp before an Escape pressed while F3 is held.
+        if keyCode == 53 && type == .keyDown && (_isRecording || hasPendingOutput?() == true) {
             _isCancelled = true
             _isRecording = false
             isToggleMode = false

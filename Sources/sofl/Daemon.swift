@@ -11,6 +11,9 @@ class Daemon: @unchecked Sendable {
     var hotkeyListener: HotkeyListener?
     var menuBar: MenuBarController?
     var overlay: OverlayController?
+    /// Main-thread only. The utterance whose text may still be pasted; Escape clears it.
+    private var pendingJob: Int?
+    private var lastJob = 0
 
     init(config: Config, transcribers: [String: TranscriberBackend], debug: Bool = false) {
         self.config = config
@@ -60,6 +63,8 @@ class Daemon: @unchecked Sendable {
                 self?.onToggleStop(entry)
             }
         )
+        hotkeyListener?.hasPendingOutput = { [weak self] in self?.pendingJob != nil }
+        hotkeyListener?.debug = debug
         hotkeyListener?.start()
 
         if config.overlay.enabled {
@@ -114,23 +119,35 @@ class Daemon: @unchecked Sendable {
             return
         }
         let mode = postMode(for: entry)
+        let job = beginJob()
 
         if config.hotkey.cancelDelay > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + config.hotkey.cancelDelay) { [self] in
-                guard let listener = hotkeyListener, !listener.isCancelled else {
-                    hotkeyListener?.resetCancel()
-                    log("Cancelled.")
-                    stateManager.transition(to: .idle)
-                    return
-                }
-                transcribeAndOutput(audio: audio, sampleRate: sampleRate, entry: entry, postMode: mode, backend: backend)
+                guard pendingJob == job else { return }
+                transcribeAndOutput(audio: audio, sampleRate: sampleRate, entry: entry, postMode: mode, backend: backend, job: job)
             }
         } else {
-            transcribeAndOutput(audio: audio, sampleRate: sampleRate, entry: entry, postMode: mode, backend: backend)
+            transcribeAndOutput(audio: audio, sampleRate: sampleRate, entry: entry, postMode: mode, backend: backend, job: job)
         }
     }
 
-    private func transcribeAndOutput(audio: [Float], sampleRate: Double, entry: HotkeyEntry, postMode: PostProcessMode?, backend: TranscriberBackend) {
+    private func beginJob() -> Int {
+        lastJob += 1
+        pendingJob = lastJob
+        return lastJob
+    }
+
+    /// Ends the job and says whether its text should still be pasted.
+    private func finishJob(_ job: Int) -> Bool {
+        guard pendingJob == job else {
+            log("Cancelled after release, nothing pasted.")
+            return false
+        }
+        pendingJob = nil
+        return true
+    }
+
+    private func transcribeAndOutput(audio: [Float], sampleRate: Double, entry: HotkeyEntry, postMode: PostProcessMode?, backend: TranscriberBackend, job: Int) {
         if !backend.isReady {
             stateManager.transition(to: .loading, text: "loading \(entry.stt)")
             if let wk = backend as? WhisperKitTranscriber {
@@ -167,11 +184,17 @@ class Daemon: @unchecked Sendable {
             let latencyMs = Int(elapsed * 1000)
 
             DispatchQueue.main.async {
+                guard self.pendingJob == job else {
+                    _ = self.finishJob(job)
+                    return
+                }
                 if let error = err {
                     print("Transcription error: \(error)")
+                    _ = self.finishJob(job)
                     self.stateManager.transition(to: .idle)
                 } else if result.isEmpty {
                     self.log("No speech detected. (\(latencyMs)ms)")
+                    _ = self.finishJob(job)
                     self.stateManager.transition(to: .idle)
                 } else {
                     let rtf = elapsed / audioDuration
@@ -196,6 +219,7 @@ class Daemon: @unchecked Sendable {
                                 self.log("Post-process failed, using raw: \(error)")
                             }
                             DispatchQueue.main.async {
+                                guard self.finishJob(job) else { return }
                                 var outConfig = self.config.output
                                 outConfig.autoEnter = entry.autoEnter
                                 Output.outputText(finalText, config: outConfig)
@@ -207,6 +231,7 @@ class Daemon: @unchecked Sendable {
                             }
                         }
                     } else {
+                        guard self.finishJob(job) else { return }
                         var outConfig = self.config.output
                         outConfig.autoEnter = entry.autoEnter
                         Output.outputText(result, config: outConfig)
@@ -239,7 +264,7 @@ class Daemon: @unchecked Sendable {
             return
         }
         let mode = postMode(for: entry)
-        transcribeAndOutput(audio: audio, sampleRate: sampleRate, entry: entry, postMode: mode, backend: backend)
+        transcribeAndOutput(audio: audio, sampleRate: sampleRate, entry: entry, postMode: mode, backend: backend, job: beginJob())
     }
 
     private func onCancel() {
@@ -247,6 +272,7 @@ class Daemon: @unchecked Sendable {
             _ = recorder.stop()
         }
         hotkeyListener?.resetToggle()
+        pendingJob = nil
         log("Cancelled.")
         stateManager.transition(to: .idle)
     }

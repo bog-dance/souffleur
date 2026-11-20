@@ -5,7 +5,7 @@ struct Sofl: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "sofl",
         abstract: "Local speech-to-text daemon powered by parakeet CoreML",
-        version: "1.7.2",
+        version: "1.7.3",
         subcommands: [Service.self, Test.self, Devices.self, ShowConfig.self],
         defaultSubcommand: Service.self
     )

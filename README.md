@@ -26,6 +26,8 @@ The formula restarts the service; the daemon copies the new release over its sta
 
 Hold **F3**, speak, release. Text is transcribed locally and pasted into the active app, followed by Enter.
 
+Press **Escape** to throw the utterance away: while holding F3, or after releasing it until the text is pasted. Nothing is pasted, no Enter, the clipboard stays as it was.
+
 ## CLI
 
 ```
