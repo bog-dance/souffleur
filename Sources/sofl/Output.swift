@@ -16,7 +16,7 @@ enum Output {
             simulateCmdV()
 
             if config.autoEnter {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(config.enterDelayMs)) {
                     simulateReturn()
                 }
             }

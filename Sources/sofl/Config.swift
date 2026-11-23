@@ -49,6 +49,8 @@ struct VocabularyConfig {
 struct OutputConfig {
     var autoPaste: Bool = true
     var autoEnter: Bool = false
+    /// Pause between Cmd+V and the auto Return.
+    var enterDelayMs: Int = 200
 }
 
 struct OverlayConfig {
@@ -143,6 +145,7 @@ struct Config {
 
             if let output = table["output"]?.table {
                 if let v = output["auto_paste"]?.bool { config.output.autoPaste = v }
+                if let v = output["enter_delay_ms"]?.int { config.output.enterDelayMs = max(0, v) }
             }
 
             if let overlay = table["overlay"]?.table {

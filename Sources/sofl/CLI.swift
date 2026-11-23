@@ -297,6 +297,7 @@ struct ShowConfig: ParsableCommand {
         print("")
         print("[output]")
         print("auto_paste = \(config.output.autoPaste)")
+        print("enter_delay_ms = \(config.output.enterDelayMs)")
         print("")
         print("[overlay]")
         print("enabled = \(config.overlay.enabled)")

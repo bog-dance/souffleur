@@ -107,6 +107,15 @@ postprocess = "none"
 auto_enter = false
 ```
 
+### Auto-Enter delay
+
+With `auto_enter = true` souffleur pastes with Cmd+V and presses Return `enter_delay_ms` later (default 200). If the text lands but is not sent, for example in Claude Code inside Zellij, raise it:
+
+```toml
+[output]
+enter_delay_ms = 500
+```
+
 ### WhisperKit backend
 
 WhisperKit (OpenAI Whisper via CoreML) is more accurate for some languages but slower than Parakeet. Add it as a second model and bind to a hotkey:
